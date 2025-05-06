@@ -76,3 +76,27 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Run rustfmt
         run: cargo fmt --all -- --check
+
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Setup repo
+        uses: actions/checkout@v3
+
+      - name: Setup Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.2.10
+
+      - name: Run build
+        run: deno task build
+
+      - name: Run type check
+        run: deno task check
+
+      - name: Run lint
+        run: deno task lint
+
+      - name: Run tests
+        run: deno task test
