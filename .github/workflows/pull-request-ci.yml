@@ -14,6 +14,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+      - name: Build bundle
+        run: deno task build
+      - name: Build index
+        run: |
+          jq 'map_values({mtime: .mtime, content_type: (.data | split(";")[0] | split(":")[1])})' dist/client_asset_bundle.json >dist/client_asset_index.json
+          jq 'map_values({mtime: .mtime, content_type: (.data | split(";")[0] | split(":")[1])})' dist/plug_asset_bundle.json >dist/plug_asset_index.json
       - uses: actions/setup-node@v2
         with:
           node-version: 18
@@ -32,12 +38,6 @@ jobs:
         uses: denoland/setup-deno@v2
         with:
           deno-version: v2.2.10
-      - name: Build bundle
-        run: deno task build
-      - name: Build index
-        run: |
-          jq 'map_values({mtime: .mtime, content_type: (.data | split(";")[0] | split(":")[1])})' dist/client_asset_bundle.json >dist/client_asset_index.json
-          jq 'map_values({mtime: .mtime, content_type: (.data | split(";")[0] | split(":")[1])})' dist/plug_asset_bundle.json >dist/plug_asset_index.json
       - name: Deploy
         run: npx wrangler deploy --dry-run
 
