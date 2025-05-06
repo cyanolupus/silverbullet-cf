@@ -56,6 +56,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Create placeholder
         run: |
+          mkdir -p dist
           touch dist/client_asset_index.json
           touch dist/plug_asset_index.json
       - name: Run Clippy
@@ -81,8 +82,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Setup repo
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v3
 
       - name: Setup Deno
         uses: denoland/setup-deno@v2
