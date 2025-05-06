@@ -9,7 +9,7 @@
     "WORKERS_RS_VERSION": "0.5.0"
   },
   "routes": [
-    "silverbullet.cyanolup.us/*"
+    "silverbullet.cyanolup.us/*" // Change this to your own domain which proxied by Cloudflare
   ],
   "r2_buckets": [
     {
