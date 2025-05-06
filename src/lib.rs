@@ -29,7 +29,7 @@ struct R2SpacePrimitives {
 }
 
 fn get_mime_type(path: &str) -> &'static str {
-    match path.split('.').last() {
+    match path.split('.').next_back() {
         Some("js") => "application/javascript",
         Some("css") => "text/css",
         Some("html") => "text/html",
