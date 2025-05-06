@@ -1,1 +1,0 @@
-![[^Library/Std/Page Templates]]
