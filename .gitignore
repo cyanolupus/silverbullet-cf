@@ -16,3 +16,12 @@ deploy.json
 *.generated
 tmp_playground
 /version.ts
+/version.ts
+target/
+**/*.rs.bk
+wasm-pack.log
+build/
+package-lock.json
+package.json
+node_modules/
+.wrangler/

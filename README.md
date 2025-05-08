@@ -1,3 +1,59 @@
+# SilverBullet Cloudflare Workers
+This is a Cloudflare Workers implementation of SilverBullet, an open source **personal productivity platform** built on Markdown. It's designed to run on Cloudflare's edge network, providing fast access from anywhere in the world.
+
+## Features
+* **Edge Computing**: Runs on Cloudflare's global network for low-latency access
+* **R2 Storage**: Uses Cloudflare R2 for data storage
+* **Markdown Support**: Full Markdown editing and preview capabilities
+* **PWA Support**: Works as a Progressive Web App
+* **Offline Capable**: Syncs content when back online
+* **Self-hosted**: You own your data, stored in your R2 bucket
+
+## Development
+
+### Prerequisites
+- Rust and Cargo
+- Deno
+- Wrangler CLI (`npm install -g wrangler`)
+- jq
+- Cloudflare account with R2 enabled
+
+### Setup
+1. Clone this repository
+2. Create an R2 bucket in your Cloudflare account
+3. Configure your `wrangler.toml` with your R2 bucket name
+4. Run `wrangler dev` for local development
+
+### Building and Deployment
+The deployment process consists of several steps:
+
+1. Build the asset bundles:
+```shell
+deno task build
+```
+
+2. Upload the asset bundles to R2:
+```shell
+wrangler r2 object put {fill_your_bucket_name}/dist/client_asset_bundle.json --file dist/client_asset_bundle.json --remote
+wrangler r2 object put {fill_your_bucket_name}/dist/plug_asset_bundle.json --file dist/plug_asset_bundle.json --remote
+```
+
+3. Generate asset bundle indices:
+```shell
+jq 'map_values({mtime: .mtime, content_type: (.data | split(";")[0] | split(":")[1])})' dist/client_asset_bundle.json >dist/client_asset_index.json
+jq 'map_values({mtime: .mtime, content_type: (.data | split(";")[0] | split(":")[1])})' dist/plug_asset_bundle.json >dist/plug_asset_index.json
+```
+
+4. Deploy the worker:
+```shell
+wrangler deploy
+```
+
+## License
+MIT License
+
+---
+
 # SilverBullet
 SilverBullet is an open source **personal productivity platform** built on Markdown, turbo charged with the scripting power of Lua. You self host it on your server, access it via any modern browser on any device (desktop, laptop, mobile). Since SilverBullet is built as a Local First PWA, it is fully offline capable. Temporarily don't have network access? No problem, SilverBullet will sync your content when you get back online.
 
