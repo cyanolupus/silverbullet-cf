@@ -14,6 +14,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+      - name: Setup Wrangler Files
+        run: |
+          cp wrangler.jsonc.template wrangler.jsonc
+          sed -i 's/SB_CF_UNIQUE_DOMAIN_NAME/${{ vars.SB_CF_UNIQUE_DOMAIN_NAME }}/g' wrangler.jsonc
+          sed -i 's/SB_CF_UNIQUE_BUCKET_NAME/${{ vars.SB_CF_UNIQUE_BUCKET_NAME }}/g' wrangler.jsonc
       - name: Setup Deno
         uses: denoland/setup-deno@v2
         with:

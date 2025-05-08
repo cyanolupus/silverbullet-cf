@@ -21,8 +21,6 @@ This is a Cloudflare Workers implementation of SilverBullet, an open source **pe
 ### Setup
 1. Clone this repository
 2. Create an R2 bucket in your Cloudflare account
-3. Configure your `wrangler.toml` with your R2 bucket name
-4. Run `wrangler dev` for local development
 
 ### Building and Deployment
 The deployment process consists of several steps:
@@ -32,19 +30,26 @@ The deployment process consists of several steps:
 deno task build
 ```
 
-2. Upload the asset bundles to R2:
+1. Setup Wrangler Files
+```shell
+cp wrangler.jsonc.template wrangler.jsonc
+```
+
+edit `wrangler.jsonc` with your own domain and bucket name by replacing `SB_CF_UNIQUE_WORKER_NAME`, `SB_CF_UNIQUE_DOMAIN_NAME` and `SB_CF_UNIQUE_BUCKET_NAME` with your own values. (like `silverbullet`, `example.com` and `silverbullet`)
+
+1. Upload the asset bundles to R2:
 ```shell
 wrangler r2 object put {fill_your_bucket_name}/dist/client_asset_bundle.json --file dist/client_asset_bundle.json --remote
 wrangler r2 object put {fill_your_bucket_name}/dist/plug_asset_bundle.json --file dist/plug_asset_bundle.json --remote
 ```
 
-3. Generate asset bundle indices:
+1. Generate asset bundle indices:
 ```shell
 jq 'map_values({mtime: .mtime, content_type: (.data | split(";")[0] | split(":")[1])})' dist/client_asset_bundle.json >dist/client_asset_index.json
 jq 'map_values({mtime: .mtime, content_type: (.data | split(";")[0] | split(":")[1])})' dist/plug_asset_bundle.json >dist/plug_asset_index.json
 ```
 
-4. Deploy the worker:
+1. Deploy the worker:
 ```shell
 wrangler deploy
 ```
