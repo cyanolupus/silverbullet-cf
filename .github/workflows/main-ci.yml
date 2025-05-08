@@ -1,0 +1,92 @@
+name: main CI
+
+concurrency:
+  group: main
+  cancel-in-progress: false
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Setup Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.2.10
+      - name: Build bundle
+        run: deno task build
+      - name: Build index
+        run: |
+          jq 'map_values({mtime: .mtime, content_type: (.data | split(";")[0] | split(":")[1])})' dist/client_asset_bundle.json >dist/client_asset_index.json
+          jq 'map_values({mtime: .mtime, content_type: (.data | split(";")[0] | split(":")[1])})' dist/plug_asset_bundle.json >dist/plug_asset_index.json
+      - uses: actions/setup-node@v2
+        with:
+          node-version: 18
+      - name: Setup Wrangler
+        run: npm install wrangler@4.14.1 --save-dev
+      - name: Setup Toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - uses: jetli/wasm-pack-action@v0.4.0
+        with:
+          version: 'latest'
+      - name: Upload bundle
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+        run: |
+          npx wrangler r2 object put silverbullet/dist/client_asset_bundle.json --file dist/client_asset_bundle.json --remote
+          npx wrangler r2 object put silverbullet/dist/plug_asset_bundle.json --file dist/plug_asset_bundle.json --remote
+      - name: Deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+        run: npx wrangler deploy
+
+  deploy-sample:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Setup Sample Files
+        run: |
+          cp wrangler.jsonc.sample wrangler.jsonc
+      - name: Setup Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.2.10
+      - name: Build bundle
+        run: deno task build
+      - name: Build index
+        run: |
+          jq 'map_values({mtime: .mtime, content_type: (.data | split(";")[0] | split(":")[1])})' dist/client_asset_bundle.json >dist/client_asset_index.json
+          jq 'map_values({mtime: .mtime, content_type: (.data | split(";")[0] | split(":")[1])})' dist/plug_asset_bundle.json >dist/plug_asset_index.json
+      - uses: actions/setup-node@v2
+        with:
+          node-version: 18
+      - name: Setup Wrangler
+        run: npm install wrangler@4.14.1 --save-dev
+      - name: Setup Toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - uses: jetli/wasm-pack-action@v0.4.0
+        with:
+          version: 'latest'
+      - name: Upload bundle
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+        run: |
+          npx wrangler r2 object put silverbullet/dist/client_asset_bundle.json --file dist/client_asset_bundle.json --remote
+          npx wrangler r2 object put silverbullet/dist/plug_asset_bundle.json --file dist/plug_asset_bundle.json --remote
+      - name: Deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+        run: npx wrangler deploy

@@ -1,0 +1,102 @@
+name: PR CI
+
+concurrency:
+  group: pull-request-${{ github.event.number }}
+  cancel-in-progress: true
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  dry-run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Setup Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.2.10
+      - name: Build bundle
+        run: deno task build
+      - name: Build index
+        run: |
+          jq 'map_values({mtime: .mtime, content_type: (.data | split(";")[0] | split(":")[1])})' dist/client_asset_bundle.json >dist/client_asset_index.json
+          jq 'map_values({mtime: .mtime, content_type: (.data | split(";")[0] | split(":")[1])})' dist/plug_asset_bundle.json >dist/plug_asset_index.json
+      - uses: actions/setup-node@v2
+        with:
+          node-version: 18
+      - name: Setup Wrangler
+        run: npm install wrangler@4.14.1 --save-dev
+      - name: Setup Toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - uses: jetli/wasm-pack-action@v0.4.0
+        with:
+          version: 'latest'
+      - name: Deploy
+        run: npx wrangler deploy --dry-run
+
+  clippy:
+    permissions:
+      contents: read
+      checks: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Setup Toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Create placeholder
+        run: |
+          mkdir -p dist
+          touch dist/client_asset_index.json
+          touch dist/plug_asset_index.json
+      - name: Run Clippy
+        uses: giraffate/clippy-action@v1.0.1
+        with:
+          reporter: github-pr-check
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+  fmt:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Setup Toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+          components: rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - name: Run rustfmt
+        run: cargo fmt --all -- --check
+
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.2.10
+
+      - name: Run build
+        run: deno task build
+
+      - name: Run type check
+        run: deno task check
+
+      - name: Run lint
+        run: deno task lint
+
+      - name: Run tests
+        run: deno task test
