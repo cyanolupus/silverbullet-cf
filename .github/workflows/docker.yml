@@ -14,6 +14,7 @@ env:
   NAMESPACE_DOCKER: zefhemel
 jobs:
   docker-main:
+    if: github.repository == 'silverbulletmd/silverbullet'
     runs-on: ubuntu-latest
 
     steps:
