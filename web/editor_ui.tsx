@@ -4,7 +4,11 @@ import { FilterList } from "./components/filter.tsx";
 import { PageNavigator } from "./components/page_navigator.tsx";
 import { TopBar } from "./components/top_bar.tsx";
 import reducer from "./reducer.ts";
-import { type Action, type AppViewState, initialViewState } from "./type.ts";
+import {
+  type Action,
+  type AppViewState,
+  initialViewState,
+} from "./ui_types.ts";
 import * as featherIcons from "preact-feather";
 import * as mdi from "./filtered_material_icons.ts";
 import { h, render as preactRender } from "preact";
@@ -14,11 +18,11 @@ import { runScopeHandlers } from "@codemirror/view";
 import type { Client } from "./client.ts";
 import { Panel } from "./components/panel.tsx";
 import { safeRun } from "../lib/async.ts";
+import { clientStoreSyscalls } from "./syscalls/clientStore.ts";
 import type { FilterOption } from "@silverbulletmd/silverbullet/type/client";
 
 export class MainUI {
   viewState: AppViewState = initialViewState;
-  viewDispatch: (action: Action) => void = () => {};
 
   constructor(private client: Client) {
     // Make keyboard shortcuts work even when the editor is in read only mode or not focused
@@ -68,6 +72,9 @@ export class MainUI {
     });
   }
 
+  viewDispatch: (action: Action) => void = () => {
+  };
+
   ViewComponent() {
     const [viewState, dispatch] = useReducer(reducer, initialViewState);
     this.viewState = viewState;
@@ -95,19 +102,38 @@ export class MainUI {
     }, [viewState.uiOptions.vimMode]);
 
     useEffect(() => {
-      document.documentElement.dataset.theme = viewState.uiOptions.darkMode
-        ? "dark"
-        : "light";
-      if (this.client.isDocumentEditor()) {
-        this.client.documentEditor.updateTheme();
-      }
+      clientStoreSyscalls(client.ds)["clientStore.get"](
+        {},
+        "darkMode",
+      ).then((storedDarkModePreference: boolean | undefined) => {
+        let theme: "dark" | "light";
+        if (storedDarkModePreference === true) {
+          theme = "dark";
+        } else if (storedDarkModePreference === false) {
+          theme = "light";
+        } else {
+          theme = globalThis.matchMedia("(prefers-color-scheme: dark)").matches
+            ? "dark"
+            : "light";
+        }
+
+        viewState.uiOptions.darkMode = theme === "dark";
+        document.documentElement.dataset.theme = theme;
+
+        if (this.client.isDocumentEditor()) {
+          this.client.documentEditor.updateTheme();
+        }
+      });
     }, [viewState.uiOptions.darkMode]);
 
     useEffect(() => {
       // Need to dispatch a resize event so that the top_bar can pick it up
       globalThis.dispatchEvent(new Event("resize"));
     }, [viewState.panels]);
-
+    const actionButtons = client.config.get<ActionButton[]>(
+      "actionButtons",
+      [],
+    );
     return (
       <>
         {viewState.showPageNavigator && (
@@ -195,9 +221,9 @@ export class MainUI {
             onTrigger={(cmd) => {
               dispatch({ type: "hide-palette" });
               if (cmd) {
-                dispatch({ type: "command-run", command: cmd.command.name });
+                dispatch({ type: "command-run", command: cmd.name });
                 cmd
-                  .run()
+                  .run!()
                   .catch((e: any) => {
                     console.error("Error running command", e.message);
                   })
@@ -216,7 +242,6 @@ export class MainUI {
             darkMode={viewState.uiOptions.darkMode}
             completer={client.miniEditorComplete.bind(client)}
             recentCommands={viewState.recentCommands}
-            config={client.config}
           />
         )}
         {viewState.showFilterBox && (
@@ -262,7 +287,8 @@ export class MainUI {
           isLoading={viewState.isLoading}
           vimMode={viewState.uiOptions.vimMode}
           darkMode={viewState.uiOptions.darkMode}
-          progressPerc={viewState.progressPerc}
+          progressPercentage={viewState.progressPercentage}
+          progressType={viewState.progressType}
           completer={client.miniEditorComplete.bind(client)}
           onClick={() => {
             if (!client.isDocumentEditor()) {
@@ -298,27 +324,34 @@ export class MainUI {
           actionButtons={[
             // Vertical menu button
             ...(viewState.isMobile &&
-                client.config.get<string>("mobileMenuStyle", "hamburger").includes(
-                  "hamburger",
-                ))
+                client.config.get<string>("mobileMenuStyle", "hamburger")
+                  .includes(
+                    "hamburger",
+                  ))
               ? [{
                 icon: featherIcons.MoreVertical,
                 description: "Open Menu",
                 class: "expander",
-                callback:
-                  () => {/* nothing to do, menu opens on hover/mobile click */},
+                callback: () => {
+                  /* nothing to do, menu opens on hover/mobile click */
+                },
               }]
               : [],
             // Custom action buttons
-            ...client.config.get<ActionButton[]>(
-              "actionButtons",
-              defaultActionButtons,
-            ).filter((
+            ...actionButtons.filter(( // Filter out buttons without icons (invalid) and mobile buttons when not in mobile mode
               button,
             ) =>
-              (typeof button.mobile === "undefined") ||
-              (button.mobile === viewState.isMobile)
+              button.icon && (
+                (typeof button.mobile === "undefined") ||
+                (button.mobile === viewState.isMobile)
+              )
             )
+              // Then ensure all buttons have a priority set (by default based on array index)
+              .map((button, index) => ({
+                ...button,
+                priority: button.priority ?? actionButtons.length - index,
+              }))
+              .sort((a, b) => b.priority - a.priority)
               .map((button) => {
                 const mdiIcon = (mdi as any)[kebabToCamel(button.icon)];
                 let featherIcon =
@@ -329,12 +362,12 @@ export class MainUI {
                 return {
                   icon: mdiIcon ? mdiIcon : featherIcon,
                   description: button.description || "",
-                  callback: () => {
-                    client.runCommandByName(
-                      button.command,
-                      button.args || [],
+                  callback: button.run || (() => {
+                    client.flashNotification(
+                      "actionButton did not specify a run() callback",
+                      "error",
                     );
-                  },
+                  }),
                   href: "",
                 };
               }),
@@ -358,18 +391,21 @@ export class MainUI {
             ? viewState.current?.meta?.pageDecoration?.cssClasses
               .join(" ").replaceAll(/[^a-zA-Z0-9-_ ]/g, "")
             : ""}
-          mobileMenuStyle={client.config.get<string>("mobileMenuStyle", "hamburger")}
+          mobileMenuStyle={client.config.get<string>(
+            "mobileMenuStyle",
+            "hamburger",
+          )}
         />
         <div id="sb-main">
-          {!!viewState.panels.lhs.mode && (
+          {(viewState.panels.lhs.mode !== undefined) && (
             <Panel config={viewState.panels.lhs} editor={client} />
           )}
           <div id="sb-editor" />
-          {!!viewState.panels.rhs.mode && (
+          {(viewState.panels.rhs.mode !== undefined) && (
             <Panel config={viewState.panels.rhs} editor={client} />
           )}
         </div>
-        {!!viewState.panels.modal.mode && (
+        {(viewState.panels.modal.mode !== undefined) && (
           <div
             className="sb-modal"
             style={{ inset: `${viewState.panels.modal.mode}px` }}
@@ -377,7 +413,7 @@ export class MainUI {
             <Panel config={viewState.panels.modal} editor={client} />
           </div>
         )}
-        {!!viewState.panels.bhs.mode && (
+        {(viewState.panels.bhs.mode !== undefined) && (
           <div className="sb-bhs">
             <Panel config={viewState.panels.bhs} editor={client} />
           </div>
@@ -398,28 +434,10 @@ export class MainUI {
 type ActionButton = {
   icon: string;
   description?: string;
-  command: string;
-  args?: any[];
   mobile?: boolean;
+  priority?: number;
+  run: () => void;
 };
-
-export const defaultActionButtons: ActionButton[] = [
-  {
-    icon: "Home",
-    description: "Go to the index page",
-    command: "Navigate: Home",
-  },
-  {
-    icon: "Book",
-    description: `Open page`,
-    command: "Navigate: Page Picker",
-  },
-  {
-    icon: "Terminal",
-    description: `Run command`,
-    command: "Open Command Palette",
-  },
-];
 
 function kebabToCamel(str: string) {
   return str.replace(/-([a-z])/g, (g) => g[1].toUpperCase()).replace(

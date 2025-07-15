@@ -13,14 +13,15 @@ jobs:
     steps:
       - name: Setup repo
         uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+          fetch-tags: true
       - name: Setup Deno
         uses: denoland/setup-deno@v2
         with:
-          deno-version: v2.2.10
+          deno-version: v2.3.6
       - name: Run build
         run: deno task build
-      - name: Bundle
-        run: deno task bundle
       - name: Publish to JSR
         run: deno publish
       - name: Release
@@ -31,4 +32,5 @@ jobs:
           draft: false
           files: |
             website/CHANGELOG.md
+            dist/plug-compile.js
             dist/silverbullet.js

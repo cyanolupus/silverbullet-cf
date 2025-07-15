@@ -1,10 +1,10 @@
-import type {
-  CodeWidgetCallback,
-  WidgetContent,
-} from "../../plug-api/types.ts";
 import { WidgetType } from "@codemirror/view";
 import type { Client } from "../client.ts";
 import { createWidgetSandboxIFrame } from "../components/widget_sandbox_iframe.ts";
+import type {
+  CodeWidgetCallback,
+  WidgetContent,
+} from "@silverbulletmd/silverbullet/type/client";
 
 export class IFrameWidget extends WidgetType {
   iframe?: HTMLIFrameElement;
@@ -17,6 +17,12 @@ export class IFrameWidget extends WidgetType {
     readonly codeWidgetCallback: CodeWidgetCallback,
   ) {
     super();
+  }
+
+  override get estimatedHeight(): number {
+    const cachedHeight = this.client.getCachedWidgetHeight(this.bodyText);
+    // console.log("Calling estimated height", this.bodyText, cachedHeight);
+    return cachedHeight > 0 ? cachedHeight : 150;
   }
 
   toDOM(): HTMLElement {
@@ -65,12 +71,6 @@ export class IFrameWidget extends WidgetType {
     iframe.style.height = `${estimatedHeight}px`;
 
     return iframe;
-  }
-
-  override get estimatedHeight(): number {
-    const cachedHeight = this.client.getCachedWidgetHeight(this.bodyText);
-    // console.log("Calling estimated height", this.bodyText, cachedHeight);
-    return cachedHeight > 0 ? cachedHeight : 150;
   }
 
   override eq(other: WidgetType): boolean {

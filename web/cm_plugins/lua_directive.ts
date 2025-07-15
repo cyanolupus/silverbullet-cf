@@ -7,24 +7,24 @@ import {
   isCursorInRange,
 } from "./util.ts";
 import type { Client } from "../client.ts";
-import { parse as parseLua } from "$common/space_lua/parse.ts";
+import { parse as parseLua } from "../../lib/space_lua/parse.ts";
 import type {
   LuaBlock,
   LuaFunctionCallStatement,
-} from "$common/space_lua/ast.ts";
-import { evalExpression } from "$common/space_lua/eval.ts";
+} from "../../lib/space_lua/ast.ts";
+import { evalExpression } from "../../lib/space_lua/eval.ts";
 import {
   LuaEnv,
+  LuaRuntimeError,
   LuaStackFrame,
   luaValueToJS,
   singleResult,
-} from "$common/space_lua/runtime.ts";
-import { LuaRuntimeError } from "$common/space_lua/runtime.ts";
+} from "../../lib/space_lua/runtime.ts";
 import { encodeRef } from "@silverbulletmd/silverbullet/lib/page_ref";
-import { resolveASTReference } from "$common/space_lua.ts";
+import { resolveASTReference } from "../space_lua.ts";
 import { LuaWidget } from "./lua_widget.ts";
-import type { PageMeta } from "@silverbulletmd/silverbullet/types";
 import YAML from "js-yaml";
+import type { PageMeta } from "../../type/index.ts";
 
 export function luaDirectivePlugin(client: Client) {
   return decoratorStateField((state: EditorState) => {
@@ -105,7 +105,7 @@ export function luaDirectivePlugin(client: Client) {
                     client.clientSystem.spaceLuaEnv.env,
                   );
                   threadLocalizedEnv.setLocal("_CTX", tl);
-                  const result = luaValueToJS(
+                  return luaValueToJS(
                     singleResult(
                       await evalExpression(
                         expr,
@@ -115,7 +115,6 @@ export function luaDirectivePlugin(client: Client) {
                     ),
                     sf,
                   );
-                  return result;
                 } catch (e: any) {
                   if (e instanceof LuaRuntimeError) {
                     if (e.sf?.astCtx) {

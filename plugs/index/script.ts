@@ -1,7 +1,8 @@
-import type { IndexTreeEvent } from "../../plug-api/types.ts";
+import type { IndexTreeEvent } from "../../type/event.ts";
 import { collectNodesOfType, findNodeOfType } from "../../plug-api/lib/tree.ts";
-import type { ObjectValue } from "../../plug-api/types.ts";
 import { indexObjects } from "./api.ts";
+import type { ObjectValue } from "../../type/index.ts";
+
 export type ScriptObject = ObjectValue<{
   script: string;
   priority?: number;

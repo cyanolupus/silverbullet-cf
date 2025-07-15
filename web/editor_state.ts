@@ -21,7 +21,7 @@ import {
   LanguageSupport,
   syntaxHighlighting,
 } from "@codemirror/language";
-import { EditorState } from "@codemirror/state";
+import { Compartment, EditorState, type Extension } from "@codemirror/state";
 import {
   drawSelection,
   dropCursor,
@@ -39,22 +39,19 @@ import { inlineContentPlugin } from "./cm_plugins/inline_content.ts";
 import { cleanModePlugins } from "./cm_plugins/clean.ts";
 import { lineWrapper } from "./cm_plugins/line_wrapper.ts";
 import { createSmartQuoteKeyBindings } from "./cm_plugins/smart_quotes.ts";
-import type { ClickEvent } from "../plug-api/types.ts";
 import {
   documentExtension,
   pasteLinkExtension,
 } from "./cm_plugins/editor_paste.ts";
 import type { TextChange } from "./change.ts";
 import { postScriptPrefacePlugin } from "./cm_plugins/top_bottom_panels.ts";
-import { languageFor } from "$common/languages.ts";
+import { languageFor } from "./languages.ts";
 import { plugLinter } from "./cm_plugins/lint.ts";
-import { Compartment, type Extension } from "@codemirror/state";
-import { extendedMarkdownLanguage } from "$common/markdown_parser/parser.ts";
-import { safeRun } from "$lib/async.ts";
+import { extendedMarkdownLanguage } from "./markdown_parser/parser.ts";
+import { safeRun } from "../lib/async.ts";
 import { codeCopyPlugin } from "./cm_plugins/code_copy.ts";
 import { disableSpellcheck } from "./cm_plugins/spell_checking.ts";
-import { isValidEditor } from "$lib/command.ts";
-import type { Shortcut } from "@silverbulletmd/silverbullet/type/client";
+import type { ClickEvent } from "@silverbulletmd/silverbullet/type/client";
 
 export function createEditorState(
   client: Client,
@@ -303,55 +300,37 @@ export function createEditorState(
   });
 }
 
+// TODO: Move this elsewhere
+export function isValidEditor(
+  currentEditor: string | undefined,
+  requiredEditor: string | undefined,
+): boolean {
+  return (requiredEditor === undefined) ||
+    (currentEditor === undefined &&
+      requiredEditor === "page") ||
+    (requiredEditor === "any") ||
+    (currentEditor === requiredEditor) ||
+    (currentEditor !== undefined && requiredEditor === "notpage");
+}
+
 export function createCommandKeyBindings(client: Client): KeyBinding[] {
   const commandKeyBindings: KeyBinding[] = [];
 
-  // Track which keyboard shortcuts for which commands we've overridden, so we can skip them later
-  const overriddenCommands = new Set<string>();
-  // Keyboard shortcuts from SETTINGS take precedense
-  if (client.config.has("shortcuts")) {
-    for (const shortcut of client.config.get<Shortcut[]>("shortcuts", [])) {
-      commandKeyBindings.push({
-        key: shortcut.key,
-        mac: shortcut.mac,
-        run: (): boolean => {
-          client.runCommandByName(shortcut.command).catch(
-            (e: any) => {
-              console.error(e);
-              client.flashNotification(
-                `Error running command: ${e.message}`,
-                "error",
-              );
-            },
-          ).then((returnValue: any) => {
-            // Always be focusing the editor after running a command
-            if (returnValue !== false) {
-              client.focus();
-            }
-          });
-          return true;
-        },
-      });
-    }
-  }
-
   // Then add bindings for plug commands
-  for (const def of client.clientSystem.commandHook.editorCommands.values()) {
+  for (
+    const def of client.clientSystem.commandHook.buildAllCommands().values()
+  ) {
     const currentEditor = client.documentEditor?.name;
-    const requiredEditor = def.command.requireEditor;
+    const requiredEditor = def.requireEditor;
 
-    if (def.command.key && isValidEditor(currentEditor, requiredEditor)) {
-      // If we've already overridden this command, skip it
-      if (overriddenCommands.has(def.command.name)) {
-        continue;
-      }
+    if (def.key && isValidEditor(currentEditor, requiredEditor)) {
       commandKeyBindings.push({
-        key: def.command.key,
-        mac: def.command.mac,
+        key: def.key,
+        mac: def.mac,
         run: (): boolean => {
-          if (def.command.contexts) {
+          if (def.contexts) {
             const context = client.getContext();
-            if (!context || !def.command.contexts.includes(context)) {
+            if (!context || !def.contexts.includes(context)) {
               return false;
             }
           }

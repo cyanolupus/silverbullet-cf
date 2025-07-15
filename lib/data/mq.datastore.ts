@@ -1,13 +1,13 @@
+import type { DataStore } from "./datastore.ts";
+import { parseExpressionString } from "../space_lua/parse.ts";
+import { LuaEnv } from "../space_lua/runtime.ts";
 import type {
   KV,
   KvKey,
   MQMessage,
   MQStats,
   MQSubscribeOptions,
-} from "../../plug-api/types.ts";
-import type { DataStore } from "./datastore.ts";
-import { parseExpressionString } from "$common/space_lua/parse.ts";
-import { LuaEnv } from "$common/space_lua/runtime.ts";
+} from "../../type/datastore.ts";
 
 export type ProcessingMessage = MQMessage & {
   ts: number;
@@ -20,14 +20,13 @@ const dlqPrefix = ["mq", "dlq"];
 export class DataStoreMQ {
   // queue -> set of run() functions
   localSubscriptions = new Map<string, Set<() => void>>();
+  // Internal sequencer for messages, only really necessary when batch sending tons of messages within a millisecond
+  seq = 0;
 
   constructor(
     private ds: DataStore,
   ) {
   }
-
-  // Internal sequencer for messages, only really necessary when batch sending tons of messages within a millisecond
-  seq = 0;
 
   async batchSend(queue: string, bodies: any[]): Promise<void> {
     if (bodies.length === 0) {

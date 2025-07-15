@@ -12,11 +12,14 @@ jobs:
     steps:
       - name: Setup repo
         uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+          fetch-tags: true
 
       - name: Setup Deno
         uses: denoland/setup-deno@v2
         with:
-          deno-version: v2.2.10
+          deno-version: v2.3.6
 
       - name: Build bundles
         run: |
@@ -24,11 +27,11 @@ jobs:
 
       - name: Compile for all platforms
         run: |
-          deno task server:dist:linux-x86_64
-          deno task server:dist:linux-aarch64
-          deno task server:dist:darwin-x86_64
-          deno task server:dist:darwin-aarch64
-          deno task server:dist:windows-x86_64
+          deno task server:zip:linux-x86_64
+          deno task server:zip:linux-aarch64
+          deno task server:zip:darwin-x86_64
+          deno task server:zip:darwin-aarch64
+          deno task server:zip:windows-x86_64
 
       - name: Release
         uses: softprops/action-gh-release@v1

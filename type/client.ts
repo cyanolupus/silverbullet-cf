@@ -1,4 +1,5 @@
-// Used by FilterBox
+import type { ParseTree } from "@silverbulletmd/silverbullet/lib/tree";
+
 export type FilterOption = {
   name: string;
   description?: string;
@@ -6,6 +7,7 @@ export type FilterOption = {
   hint?: string;
   hintInactive?: boolean;
   classes?: string;
+  category?: string;
 } & Record<string, any>;
 
 export type Notification = {
@@ -17,41 +19,110 @@ export type Notification = {
 
 export type PanelMode = number;
 
-export type Shortcut = {
-  // Command we're creating the shortcut for
-  command: string;
-  // (Re)bind to keyboard shortcut
-  key?: string;
-  mac?: string;
-  // Bind to slash command
-  slashCommand?: string;
-  // Tweak priority in command palette
-  priority?: number;
+export type CodeWidgetContent = {
+  html: string;
+  script?: string;
+  buttons?: CodeWidgetButton[];
 };
 
-export type ActionButton = {
-  icon: string;
-  description?: string;
-  command: string;
-  args?: any[];
-  mobile?: boolean;
+export type CodeWidgetButton = {
+  widgetTarget?: boolean;
+  description: string;
+  svg: string;
+  invokeFunction: string[];
 };
 
-export type EmojiConfig = {
-  aliases: string[][];
+// Document editors stuff
+export type DocumentEditorCallback = () => Promise<DocumentEditorContent>;
+export type DocumentEditorContent = {
+  html: string;
+  script?: string;
 };
 
-export type SmartQuotesConfig = {
-  enabled?: boolean;
-  double?: { left?: string; right?: string };
-  single?: { left?: string; right?: string };
+export type LintDiagnostic = {
+  from: number;
+  to: number;
+  severity: "error" | "warning" | "info" | "hint";
+  message: string;
 };
 
-type vimMode = "normal" | "insert" | "visual";
-
-export type VimConfig = {
-  unmap?: (string | { key: string; mode?: vimMode })[];
-  map?: { map: string; to: string; mode?: vimMode }[];
-  noremap?: { map: string; to: string; mode?: vimMode }[];
-  commands?: { ex: string; command: string }[];
+export type UploadFile = {
+  name: string;
+  contentType: string;
+  content: Uint8Array;
 };
+
+export type AppEvent =
+  | "page:click"
+  | "editor:complete"
+  | "minieditor:complete"
+  | "slash:complete"
+  | "editor:lint"
+  | "page:load"
+  | "editor:init"
+  | "editor:pageLoaded" // args: pageName, previousPage, isSynced
+  | "editor:pageReloaded"
+  | "editor:pageSaving"
+  | "editor:pageSaved"
+  | "editor:pageCreating"
+  | "editor:pageModified"
+  | "editor:documentSaving"
+  | "editor:documentSaved"
+  | "editor:modeswitch"
+  | "plugs:loaded"
+  | "cron:secondPassed"
+  | "hooks:renderTopWidgets"
+  | "hooks:renderBottomWidgets";
+
+export type ClickEvent = {
+  page: string;
+  pos: number;
+  metaKey: boolean;
+  ctrlKey: boolean;
+  altKey: boolean;
+};
+
+export type EnrichedClickEvent = ClickEvent & {
+  parentNodes: string[];
+};
+
+export type LintEvent = {
+  name: string;
+  tree: ParseTree;
+};
+
+export type CompleteEvent = {
+  pageName: string;
+  linePrefix: string;
+  pos: number;
+  parentNodes: string[];
+};
+
+export type SlashCompletionOption = {
+  label: string;
+  detail?: string;
+  invoke: string;
+  order?: number;
+} & Record<string, any>;
+
+export type SlashCompletions = {
+  // Ignore this one, only for compatibility with regular completions
+  from?: number;
+  // The actual completions
+  options: SlashCompletionOption[];
+};
+
+export type WidgetContent = {
+  html?: string;
+  script?: string;
+  markdown?: string;
+  url?: string;
+  height?: number;
+  width?: number;
+};
+
+// Code widget stuff
+export type CodeWidgetCallback = (
+  bodyText: string,
+  pageName: string,
+) => Promise<CodeWidgetContent | null>;

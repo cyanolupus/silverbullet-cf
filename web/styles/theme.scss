@@ -62,6 +62,10 @@ html {
 
   --text-field-background-color: var(--button-background-color);
 
+  --progress-background-color: #eee;
+  --progress-sync-color: black;
+  --progress-index-color: rgb(176, 0, 59);
+
   --action-button-background-color: transparent;
   --action-button-color: #292929;
   --action-button-hover-color: #0772be;
@@ -201,6 +205,10 @@ html[data-theme="dark"] {
   --primary-button-color: var(--ui-accent-contrast-color);
   --primary-button-border-color: transparent;
 
+  --progress-background-color: #555;
+  --progress-sync-color: white;
+  --progress-index-color: yellow;
+
   --text-field-background-color: var(--button-background-color);
 
   --action-button-background-color: transparent;
@@ -265,7 +273,7 @@ html[data-theme="dark"] {
   --editor-directive-background-color: #4c4c4c7d;
 }
 
-.sb-admonition[admonition="note"] {
+.sb-admonition[admonition="note" i] {
   .sb-admonition-type {
     &::before {
       width: var(--admonition-width) !important;
@@ -280,7 +288,7 @@ html[data-theme="dark"] {
   --admonition-color: #00b8d4;
 }
 
-.sb-admonition[admonition="warning"] {
+.sb-admonition[admonition="warning" i] {
   .sb-admonition-type {
     &::before {
       width: var(--admonition-width) !important;

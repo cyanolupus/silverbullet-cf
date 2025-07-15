@@ -1,5 +1,5 @@
-import type { PageMeta } from "../plug-api/types.ts";
-import type { Action, AppViewState } from "./type.ts";
+import type { Action, AppViewState } from "./ui_types.ts";
+import type { PageMeta } from "../type/index.ts";
 
 export default function reducer(
   state: AppViewState,
@@ -228,7 +228,8 @@ export default function reducer(
         showCommandPalette: false,
         showPageNavigator: false,
         showFilterBox: false,
-        filterBoxOnSelect: () => {},
+        filterBoxOnSelect: () => {
+        },
         filterBoxPlaceHolder: "",
         filterBoxOptions: [],
         filterBoxHelpText: "",
@@ -274,7 +275,8 @@ export default function reducer(
     case "set-progress":
       return {
         ...state,
-        progressPerc: action.progressPerc,
+        progressPercentage: action.progressPercentage,
+        progressType: action.progressType,
       };
   }
 }

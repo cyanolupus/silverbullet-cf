@@ -1,5 +1,3 @@
-#level/hardcore
-
 Space Style is [[Space Lua]]’s stylish sibling. It enables you to add your own styling to SilverBullet with `space-style` [[Markdown/Fenced Code Blocks]].
 
 This can be used to achieve various things, such as overriding the default editor font or setting wider page widths. It is also possible to develop custom themes this way. 
@@ -8,7 +6,51 @@ To apply the updated styles, either reload the client or run the ${widgets.comma
 
 Many styles can be set with [variables](https://github.com/silverbulletmd/silverbullet/blob/main/web/styles/theme.scss) but not everything is covered. You’ll have to reverse-engineer those parts, unfortunately.
 
-# Examples
+# Load order
+You can tweak the CSS load order style by including a `/* priority: number */` comment:
+
+```space-style
+/* priority: 10 */
+somestyle {
+  
+}
+```
+
+The following [[Space Lua/Lua Integrated Query]] is used to determine the order in which Space Style is loaded:
+
+```lua
+query[[from index.tag "space-style" order by _.priority desc]]
+```
+
+# Tag Styling
+You can add custom styles to a tag by leveraging the `data-tag-name` attribute, [CSS Attribute Selectors](https://developer.mozilla.org/en-US/docs/Web/CSS/Attribute_selectors) and custom [[Space Style]]'s. Every tag gets an attribute added to it called `data-tag-name` that is set to the tag name with the `#` symbol stripped out. So given the tag #my-cool-tag the `data-tag-name` attribute would look like: 
+
+    data-tag-name="my-cool-tag"
+
+This allows us to do things like change the color of the #my-cool-tag 
+to have a purple background, limegreen text and bold font by adding the following [[Space Style]]:
+
+```css
+.sb-hashtag[data-tag-name="my-cool-tag"] {
+  background: purple;
+  color: limegreen;
+  font-weight: bolder;
+}
+```
+
+Additionally tags written using angle brackets, such as...
+
+    #<my cool tag> 
+
+...can be styled via [[Space Style]] like this:
+```css
+.sb-hashtag[data-tag-name="my cool tag"] {
+  background: purple;
+  color: limegreen;
+  font-weight: bolder;
+}
+```
+# More examples
 All the actual CSS in these examples is commented out as to not affect this very website. 
 ```space-style
 html {

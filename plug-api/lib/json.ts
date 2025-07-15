@@ -54,9 +54,9 @@ export function cleanStringDate(d: Date): string {
   if (
     d.getUTCHours() === 0 && d.getUTCMinutes() === 0 && d.getUTCSeconds() === 0
   ) {
-    return d.getFullYear() + "-" +
-      String(d.getMonth() + 1).padStart(2, "0") + "-" +
-      String(d.getDate()).padStart(2, "0");
+    return d.getUTCFullYear() + "-" +
+      String(d.getUTCMonth() + 1).padStart(2, "0") + "-" +
+      String(d.getUTCDate()).padStart(2, "0");
   } else {
     return d.toISOString();
   }
@@ -97,47 +97,6 @@ export function cleanupJSON(a: any): any {
     target[parts[parts.length - 1]] = cleanupJSON(a[key]);
   }
   return expanded;
-}
-
-/**
- * Performs a deep merge of two objects, with b taking precedence over a
- * @param a
- * @param b
- * @returns
- */
-export function deepObjectMerge(a: any, b: any, reverseArrays = false): any {
-  if (typeof a !== typeof b) {
-    return b;
-  }
-  if (a === undefined || a === null) {
-    return b;
-  }
-  if (b === undefined || b === null) {
-    return a;
-  }
-
-  if (typeof a === "object") {
-    if (Array.isArray(a) && Array.isArray(b)) {
-      if (reverseArrays) {
-        return [...b, ...a];
-      } else {
-        return [...a, ...b];
-      }
-    } else {
-      const aKeys = Object.keys(a);
-      const bKeys = Object.keys(b);
-      const merged = { ...a };
-      for (const key of bKeys) {
-        if (aKeys.includes(key)) {
-          merged[key] = deepObjectMerge(a[key], b[key], reverseArrays);
-        } else {
-          merged[key] = b[key];
-        }
-      }
-      return merged;
-    }
-  }
-  return b;
 }
 
 export function deepClone<T>(obj: T, ignoreKeys: string[] = []): T {

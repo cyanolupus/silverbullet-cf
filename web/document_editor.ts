@@ -1,7 +1,7 @@
-import type { DocumentMeta } from "@silverbulletmd/silverbullet/types";
 import type { Client } from "./client.ts";
 import { html as skeleton } from "./document_editor_skeleton.ts";
-import { timeout } from "$lib/async.ts";
+import { timeout } from "../lib/async.ts";
+import type { DocumentMeta } from "../type/index.ts";
 
 export class DocumentEditor {
   iframe!: HTMLIFrameElement;
@@ -14,7 +14,8 @@ export class DocumentEditor {
     readonly parent: HTMLElement,
     readonly client: Client,
     readonly saveMethod: (path: string, content: Uint8Array) => void,
-  ) {}
+  ) {
+  }
 
   async init(extension: string) {
     this.extension = extension;
@@ -60,32 +61,6 @@ export class DocumentEditor {
 
     globalThis.removeEventListener("message", this.messageHandler);
     this.iframe.remove();
-  }
-
-  private async waitForSave() {
-    if (this.savePromise) {
-      try {
-        await Promise.race([
-          this.savePromise.promise,
-          timeout(2500),
-        ]);
-      } catch {
-        this.savePromise.resolve();
-        this.savePromise = null;
-
-        console.log(
-          "Unable to save content of document editor in 2.5s. Aborting save",
-        );
-      }
-    }
-  }
-
-  private sendMessage(
-    message: { type: string; internal?: boolean; data?: any },
-  ) {
-    if (!this.iframe?.contentWindow) return;
-    message.internal ??= false;
-    this.iframe.contentWindow.postMessage(message);
   }
 
   sendPublicMessage(message: { type: string; data?: any }) {
@@ -146,6 +121,32 @@ export class DocumentEditor {
         theme: client.ui.viewState.uiOptions.darkMode ? "dark" : "light",
       },
     });
+  }
+
+  private async waitForSave() {
+    if (this.savePromise) {
+      try {
+        await Promise.race([
+          this.savePromise.promise,
+          timeout(2500),
+        ]);
+      } catch {
+        this.savePromise.resolve();
+        this.savePromise = null;
+
+        console.log(
+          "Unable to save content of document editor in 2.5s. Aborting save",
+        );
+      }
+    }
+  }
+
+  private sendMessage(
+    message: { type: string; internal?: boolean; data?: any },
+  ) {
+    if (!this.iframe?.contentWindow) return;
+    message.internal ??= false;
+    this.iframe.contentWindow.postMessage(message);
   }
 
   private async messageHandler(event: any) {

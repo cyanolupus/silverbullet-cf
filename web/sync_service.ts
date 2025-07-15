@@ -1,13 +1,13 @@
-import { plugPrefix, stdLibPrefix } from "$common/spaces/constants.ts";
-import type { SpacePrimitives } from "$common/spaces/space_primitives.ts";
+import { plugPrefix, stdLibPrefix } from "../lib/spaces/constants.ts";
+import type { SpacePrimitives } from "../lib/spaces/space_primitives.ts";
 import {
   SpaceSync,
   type SyncStatus,
   type SyncStatusItem,
-} from "$common/spaces/sync.ts";
-import { sleep } from "$lib/async.ts";
-import type { EventHook } from "../common/hooks/event.ts";
-import type { DataStore } from "$lib/data/datastore.ts";
+} from "../lib/spaces/sync.ts";
+import { sleep } from "../lib/async.ts";
+import type { EventHook } from "./hooks/event.ts";
+import type { DataStore } from "../lib/data/datastore.ts";
 
 // Keeps the current sync snapshot
 const syncSnapshotKey = ["sync", "snapshot"];
@@ -42,6 +42,7 @@ export class SyncService {
   // If this is set to anything other than undefined, a file is currently saving
   savingTimeout: number | undefined;
   enabled = true;
+  filesScheduledForSync = new Set<string>();
 
   constructor(
     readonly localSpacePrimitives: SpacePrimitives,
@@ -212,8 +213,6 @@ export class SyncService {
       }
     }
   }
-
-  filesScheduledForSync = new Set<string>();
 
   async scheduleFileSync(path: string): Promise<void> {
     if (this.filesScheduledForSync.has(path)) {

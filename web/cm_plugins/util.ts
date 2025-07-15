@@ -9,7 +9,8 @@ import {
 import type { DecorationSet } from "@codemirror/view";
 import { Decoration, EditorView, WidgetType } from "@codemirror/view";
 import type { Client } from "../client.ts";
-import type { PageMeta } from "@silverbulletmd/silverbullet/types";
+
+import type { PageMeta } from "../../type/index.ts";
 
 type LinkOptions = {
   text: string;
@@ -26,6 +27,7 @@ export class LinkWidget extends WidgetType {
   ) {
     super();
   }
+
   toDOM(): HTMLElement {
     const anchor = document.createElement("a");
     anchor.className = this.options.cssClass;
@@ -80,6 +82,7 @@ export class HtmlWidget extends WidgetType {
   ) {
     super();
   }
+
   toDOM(): HTMLElement {
     const el = document.createElement("span");
     if (this.className) {
@@ -119,6 +122,7 @@ export class ButtonWidget extends WidgetType {
   ) {
     super();
   }
+
   toDOM(): HTMLElement {
     const anchor = document.createElement("button");
     anchor.className = this.cssClass;

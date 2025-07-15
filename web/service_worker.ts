@@ -1,14 +1,31 @@
-import type { FileContent } from "$common/spaces/datastore_space_primitives.ts";
-import { simpleHash } from "$lib/crypto.ts";
-import { DataStore } from "$lib/data/datastore.ts";
-import { IndexedDBKvPrimitives } from "$lib/data/indexeddb_kv_primitives.ts";
+import type { FileContent } from "../lib/spaces/datastore_space_primitives.ts";
+import { simpleHash } from "../lib/crypto.ts";
+import { DataStore } from "../lib/data/datastore.ts";
+import { IndexedDBKvPrimitives } from "../lib/data/indexeddb_kv_primitives.ts";
 import {
   decodePageURI,
   looksLikePathWithExtension,
 } from "@silverbulletmd/silverbullet/lib/page_ref";
-import type { ClientConfig } from "./client.ts";
 
+// Note: the only thing cached here is SilverBullet client assets, files and databases are kept in IndexedDB
 const CACHE_NAME = "{{CACHE_NAME}}";
+
+//`location.href` minus this worker's filename will be our base URL, including any URL prefix
+//(-1 is to remove the trailing '/')
+const workerFilename = location.pathname.substring(
+  location.pathname.lastIndexOf("/") + 1,
+);
+const baseURI = location.href.substring(
+  0,
+  location.href.length - workerFilename.length - 1,
+);
+const basePathName = location.pathname.substring(
+  0,
+  location.pathname.length - workerFilename.length - 1,
+);
+console.log(
+  `[Service Worker] Established baseURI=[${baseURI}]; basePathName=[${basePathName}]`,
+);
 
 const precacheFiles = Object.fromEntries([
   "/",
@@ -22,7 +39,7 @@ const precacheFiles = Object.fromEntries([
   "/.client/logo-dock.png",
   "/.client/main.css",
   "/.client/manifest.json",
-].map((path) => [path, path + "?v=" + CACHE_NAME, path])); // Cache busting
+].map((path) => [path, `${baseURI}${path}?v=${CACHE_NAME}`, path])); // Cache busting
 
 self.addEventListener("install", (event: any) => {
   console.log("[Service worker]", "Installing service worker...");
@@ -61,7 +78,6 @@ self.addEventListener("activate", (event: any) => {
       );
       // @ts-ignore: Take control of all clients as soon as the service worker activates
       await clients.claim();
-      console.log("[Service worker]", "clients.claim complete");
     })(),
   );
 });
@@ -72,8 +88,10 @@ const filesContentPrefix = ["file", "content"];
 self.addEventListener("fetch", (event: any) => {
   const url = new URL(event.request.url);
 
+  const pathname = url.pathname.substring(basePathName.length); //url.pathname with any URL prefix removed
+
   // Use the custom cache key if available, otherwise use the request URL
-  const cacheKey = precacheFiles[url.pathname] || event.request.url;
+  const cacheKey = precacheFiles[pathname] || event.request.url;
 
   event.respondWith(
     (async () => {
@@ -81,7 +99,7 @@ self.addEventListener("fetch", (event: any) => {
       const requestUrl = new URL(request.url);
 
       // Are we fetching a URL from the same origin as the app? If not, we don't handle it and pass it on
-      if (location.host !== requestUrl.host) {
+      if (!requestUrl.href.startsWith(baseURI)) {
         return fetch(request);
       }
 
@@ -98,79 +116,16 @@ self.addEventListener("fetch", (event: any) => {
       }
 
       if (!ds) {
-        // Not initialzed yet, or in thin client mode, let's just proxy
+        // Not initialzed yet
         return fetch(request);
       }
 
-      const pathname = requestUrl.pathname;
+      const pathname = requestUrl.pathname.substring(basePathName.length); //requestUrl.pathname without with any URL prefix removed
 
-      if (pathname === "/.config") {
-        try {
-          // First check if we have a cached config in ds
-          const cachedConfig = await ds?.get<ClientConfig>(["$clientConfig"]);
-
-          if (cachedConfig) {
-            // If we have a cached config, try to fetch fresh config with a timeout
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 1000);
-
-            try {
-              const response = await fetch(request, {
-                signal: controller.signal,
-              });
-              clearTimeout(timeoutId);
-
-              if (response.status === 401) {
-                // Pass on the 401 to the client
-                return response;
-              }
-              const clientConfig = await response.json();
-              await ds.set(["$clientConfig"], clientConfig);
-              console.log(
-                "[Service worker]",
-                "Serving and cached fresh config",
-              );
-              return new Response(JSON.stringify(clientConfig));
-            } catch (e) {
-              clearTimeout(timeoutId);
-              // If timeout or other error occurs, use cached config
-              console.log(
-                "[Service worker]",
-                "Using cached config due to timeout or error:",
-                e instanceof Error ? e.message : String(e),
-              );
-              return new Response(JSON.stringify(cachedConfig));
-            }
-          } else {
-            // No cached config, fetch without timeout
-            const response = await fetch(request);
-            if (response.status === 401) {
-              return response;
-            }
-            const clientConfig = await response.json();
-            await ds.set(["$clientConfig"], clientConfig);
-            console.log(
-              "[Service worker]",
-              "Serving and cached initial config",
-            );
-            return new Response(JSON.stringify(clientConfig));
-          }
-        } catch (e: any) {
-          console.error(
-            "[Service worker]",
-            "Failed to fetch client config",
-            e.message,
-          );
-          return new Response("{}", {
-            status: 404,
-            headers: {
-              "Content-Type": "application/json",
-            },
-          });
-        }
-      } else if (
+      if (
         pathname === "/.auth" ||
         pathname === "/.logout" ||
+        pathname === "/.config" ||
         pathname === "/index.json"
       ) {
         return fetch(request);
@@ -251,33 +206,17 @@ self.addEventListener("message", (event: any) => {
       self.skipWaiting();
       break;
     }
-    case "flushCache": {
-      caches.delete(CACHE_NAME)
-        .then(() => {
-          console.log("[Service worker]", "Cache deleted");
-          // ds?.close();
-          event.source.postMessage({ type: "cacheFlushed" });
-        });
-      break;
-    }
     case "config": {
       const spaceFolderPath = event.data.config.spaceFolderPath;
-      const dbPrefix = "" + simpleHash(spaceFolderPath);
+      const dbPrefix = "" +
+        simpleHash(`${spaceFolderPath}:${baseURI.replace(/\/*$/, "")}`);
 
       // Setup space
-      const kv = new IndexedDBKvPrimitives(`${dbPrefix}`);
+      const kv = new IndexedDBKvPrimitives(dbPrefix);
       kv.init().then(() => {
         ds = new DataStore(kv);
         console.log("Datastore in service worker initialized...");
       });
-      break;
-    }
-    case "shutdown": {
-      if (ds) {
-        console.log("[Service worker]", "Disconnecting datastore");
-        ds.kv.close();
-        ds = undefined;
-      }
       break;
     }
   }

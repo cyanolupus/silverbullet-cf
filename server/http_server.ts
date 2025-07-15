@@ -1,156 +1,110 @@
 import { type Context, Hono } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { validator } from "hono/validator";
-import type { AssetBundle } from "$lib/asset_bundle/bundle.ts";
-import type { FileMeta } from "@silverbulletmd/silverbullet/types";
-import {
-  handleShellEndpoint,
-  handleShellStreamEndpoint,
-} from "./shell_endpoints.ts";
-import { SpaceServer } from "./space_server.ts";
-import type { KvPrimitives } from "$lib/data/kv_primitives.ts";
-import { extendedMarkdownLanguage } from "$common/markdown_parser/parser.ts";
-import { parse } from "$common/markdown_parser/parse_tree.ts";
-import { renderMarkdownToHtml } from "../plugs/markdown/markdown_render.ts";
-import {
-  decodePageURI,
-  looksLikePathWithExtension,
-} from "@silverbulletmd/silverbullet/lib/page_ref";
+import type { AssetBundle } from "../lib/asset_bundle/bundle.ts";
+import { handleShellEndpoint } from "./shell_endpoint.ts";
+import type { KvPrimitives } from "../lib/data/kv_primitives.ts";
+import { compile as gitIgnoreCompiler } from "gitignore-parser";
+import { decodePageURI } from "@silverbulletmd/silverbullet/lib/page_ref";
 import { LockoutTimer } from "./lockout.ts";
 import type { AuthOptions } from "../cmd/server.ts";
 import type { ClientConfig } from "../web/client.ts";
-import { htmlEscape } from "../plugs/markdown/html_render.ts";
+import { applyUrlPrefix, removeUrlPrefix } from "../lib/url_prefix.ts";
+import { authCookieName, utcDateString } from "./util.ts";
+import { renderHtmlPage } from "./serverside_render.ts";
+import { FilteredSpacePrimitives } from "../lib/spaces/filtered_space_primitives.ts";
+import { AssetBundlePlugSpacePrimitives } from "../lib/spaces/asset_bundle_space_primitives.ts";
+import { determineStorageBackend } from "./storage_backend.ts";
+import { ReadOnlySpacePrimitives } from "../lib/spaces/ro_space_primitives.ts";
+import type { SpacePrimitives } from "../lib/spaces/space_primitives.ts";
+import { JWTIssuer } from "./crypto.ts";
+import {
+  determineShellBackend,
+  NotSupportedShell,
+  type ShellBackend,
+} from "./shell_backend.ts";
+import { CONFIG_TEMPLATE, INDEX_TEMPLATE } from "../web/PAGE_TEMPLATES.ts";
+import type { FileMeta } from "../type/index.ts";
 
 const authenticationExpirySeconds = 60 * 60 * 24 * 7; // 1 week
 
 export type ServerOptions = {
   hostname: string;
   port: number;
-  clientAssetBundle: AssetBundle;
-  plugAssetBundle: AssetBundle;
-  baseKvPrimitives: KvPrimitives;
-  certFile?: string;
-  keyFile?: string;
-  // Enable username/password/token auth
+  hostUrlPrefix?: string;
   auth?: AuthOptions;
   spaceIgnore?: string;
   pagesPath: string;
   shellBackend: string;
   readOnly: boolean;
   indexPage: string;
-  enableSpaceScript: boolean;
 };
 
 export class HttpServer {
-  abortController?: AbortController;
-  clientAssetBundle: AssetBundle;
-  plugAssetBundle: AssetBundle;
-  hostname: string;
-  port: number;
-  app: Hono;
-  keyFile: string | undefined;
-  certFile: string | undefined;
+  private abortController?: AbortController;
+  private hostname: string;
+  private port: number;
+  private app: Hono;
+  private readonly spacePrimitives: SpacePrimitives;
+  private jwtIssuer: JWTIssuer;
+  private readonly shellBackend: ShellBackend;
 
-  // Available after start()
-  spaceServer!: SpaceServer;
-  baseKvPrimitives: KvPrimitives;
-
-  constructor(private options: ServerOptions) {
-    this.app = new Hono();
-    this.clientAssetBundle = options.clientAssetBundle;
-    this.plugAssetBundle = options.plugAssetBundle;
+  constructor(
+    readonly options: ServerOptions,
+    private clientAssetBundle: AssetBundle,
+    private plugAssetBundle: AssetBundle,
+    public baseKvPrimitives: KvPrimitives,
+  ) {
+    this.app = new Hono().basePath(options.hostUrlPrefix ?? "");
     this.hostname = options.hostname;
     this.port = options.port;
-    this.keyFile = options.keyFile;
-    this.certFile = options.certFile;
-    this.baseKvPrimitives = options.baseKvPrimitives;
-  }
 
-  // Server-side renders a markdown file to HTML
-  async renderHtmlPage(
-    spaceServer: SpaceServer,
-    pageName: string,
-    c: Context,
-  ): Promise<Response> {
-    let html = "";
-    let lastModified = utcDateString(Date.now());
-    if (!spaceServer.auth) {
-      // Only attempt server-side rendering when this site is not protected by auth
-      if (!looksLikePathWithExtension(pageName)) {
-        try {
-          const { data, meta } = await spaceServer.spacePrimitives.readFile(
-            `${pageName}.md`,
-          );
-          lastModified = utcDateString(meta.lastModified);
-
-          if (c.req.header("If-Modified-Since") === lastModified) {
-            // Not modified, empty body status 304
-            return c.body(null, 304);
-          }
-          const text = new TextDecoder().decode(data);
-          const tree = parse(extendedMarkdownLanguage, text);
-          html = renderMarkdownToHtml(tree);
-        } catch (e: any) {
-          if (e.message !== "Not found") {
-            console.error("Error server-side rendering page", e);
-          }
-        }
-      } else {
-        // If it it's a file with an extension and it doesn't exist we can't really create a new one/recover
-        try {
-          await spaceServer.spacePrimitives.getFileMeta(`${pageName}`);
-        } catch (e: any) {
-          if (e.message !== "Not found") {
-            return c.notFound();
-          }
-        }
-      }
+    let fileFilterFn: (s: string) => boolean = () => true;
+    if (options.spaceIgnore) {
+      fileFilterFn = gitIgnoreCompiler(options.spaceIgnore).accepts;
     }
 
-    const templateData = {
-      TITLE: pageName,
-      DESCRIPTION: stripHtml(html).substring(0, 255),
-      CONTENT: html,
-    };
-
-    html = this.clientAssetBundle.readTextFileSync(".client/index.html");
-
-    // Replace each template variable with its corresponding value
-    for (const [key, value] of Object.entries(templateData)) {
-      const placeholder = `{{${key}}}`;
-      const stringValue = typeof value === "boolean"
-        ? (value ? "true" : "false")
-        : (key === "DESCRIPTION" ? htmlEscape(value) : String(value));
-      html = html.replace(placeholder, stringValue);
-    }
-    return c.html(
-      html,
-      200,
-      {
-        "Last-Modified": lastModified,
-      },
+    this.spacePrimitives = new FilteredSpacePrimitives(
+      new AssetBundlePlugSpacePrimitives(
+        determineStorageBackend(options.pagesPath),
+        this.plugAssetBundle,
+      ),
+      (meta) => fileFilterFn(meta.name),
     );
+
+    if (options.readOnly) {
+      this.spacePrimitives = new ReadOnlySpacePrimitives(this.spacePrimitives);
+    }
+    this.shellBackend = options.readOnly
+      ? new NotSupportedShell() // No shell for read only mode
+      : determineShellBackend(options);
+    this.jwtIssuer = new JWTIssuer(baseKvPrimitives);
   }
 
   async start() {
+    if (this.options.auth) {
+      // Initialize JWT issuer
+      await this.jwtIssuer.init(
+        JSON.stringify({ auth: this.options.auth }),
+      );
+    }
+    await this.ensureBasicPages();
     // Serve static files (javascript, css, html)
     this.serveStatic();
     this.addAuth();
     this.addFsRoutes();
 
-    // Boot space server
-    this.spaceServer = new SpaceServer(
-      this.options,
-      this.plugAssetBundle,
-      this.baseKvPrimitives,
-    );
-    await this.spaceServer.init();
-
     // Fallback, serve the UI index.html
     this.app.use("*", (c) => {
-      const url = new URL(c.req.url);
+      const url = new URL(this.unprefixedUrl(c.req.url));
       const pageName = decodePageURI(url.pathname.slice(1));
-      return this.renderHtmlPage(this.spaceServer, pageName, c);
+      return renderHtmlPage(
+        this.spacePrimitives,
+        pageName,
+        c,
+        this.options,
+        this.clientAssetBundle,
+      );
     });
 
     this.abortController = new AbortController();
@@ -159,12 +113,6 @@ export class HttpServer {
       port: this.port,
       signal: this.abortController.signal,
     };
-    if (this.keyFile) {
-      listenOptions.key = Deno.readTextFileSync(this.keyFile);
-    }
-    if (this.certFile) {
-      listenOptions.cert = Deno.readTextFileSync(this.certFile);
-    }
 
     // Start the actual server
     Deno.serve(listenOptions, this.app.fetch);
@@ -180,14 +128,19 @@ export class HttpServer {
   serveStatic() {
     this.app.use("*", (c, next): Promise<void | Response> => {
       const req = c.req;
-      const url = new URL(req.url);
-      // console.log("URL", url);
+      const url = new URL(this.unprefixedUrl(req.url));
       if (
         url.pathname === "/"
       ) {
         // Serve the UI (index.html)
-        const indexPage = this.spaceServer.indexPage ?? "index";
-        return this.renderHtmlPage(this.spaceServer, indexPage, c);
+        const indexPage = this.options.indexPage ?? "index";
+        return renderHtmlPage(
+          this.spacePrimitives,
+          indexPage,
+          c,
+          this.options,
+          this.clientAssetBundle,
+        );
       }
       try {
         const assetName = url.pathname.slice(1);
@@ -222,6 +175,13 @@ export class HttpServer {
     });
   }
 
+  stop() {
+    if (this.abortController) {
+      this.abortController.abort();
+      console.log("stopped server");
+    }
+  }
+
   private addAuth() {
     const excludedPaths = [
       "/manifest.json",
@@ -240,16 +200,21 @@ export class HttpServer {
       : new LockoutTimer(0, 0); // disabled
 
     this.app.get("/.logout", (c) => {
-      const url = new URL(c.req.url);
-      deleteCookie(c, authCookieName(url.host));
-      deleteCookie(c, "refreshLogin");
+      const url = new URL(this.unprefixedUrl(c.req.url));
+      deleteCookie(c, authCookieName(url.host), {
+        path: `${this.options.hostUrlPrefix ?? ""}/`,
+      });
+      deleteCookie(c, "refreshLogin", {
+        path: `${this.options.hostUrlPrefix ?? ""}/`,
+      });
 
-      return c.redirect("/.auth");
+      return c.redirect(this.prefixedUrl("/.auth"));
     });
 
     // Authentication endpoints
     this.app.get("/.auth", (c) => {
-      const html = this.clientAssetBundle.readTextFileSync(".client/auth.html");
+      const html = this.clientAssetBundle.readTextFileSync(".client/auth.html")
+        .replaceAll("{{HOST_URL_PREFIX}}", this.options.hostUrlPrefix ?? "");
 
       return c.html(html);
     }).post(
@@ -263,31 +228,31 @@ export class HttpServer {
           !password || typeof password !== "string" ||
           (rememberMe && typeof rememberMe !== "string")
         ) {
-          return c.redirect("/.auth?error=0");
+          return c.redirect(this.prefixedUrl("/.auth?error=0"));
         }
 
         return { username, password, rememberMe };
       }),
       async (c) => {
         const req = c.req;
-        const url = new URL(req.url);
+        const url = new URL(this.unprefixedUrl(req.url));
         const { username, password, rememberMe } = req.valid("form");
 
         const {
           user: expectedUser,
           pass: expectedPassword,
-        } = this.spaceServer.auth!;
+        } = this.options.auth!;
 
         if (lockoutTimer.isLocked()) {
           console.error("Authentication locked out, redirecting to auth page.");
-          return c.redirect("/.auth?error=2");
+          return c.redirect(this.prefixedUrl("/.auth?error=2"));
         }
 
         if (username === expectedUser && password === expectedPassword) {
           // Generate a JWT and set it as a cookie
           const jwt = rememberMe
-            ? await this.spaceServer.jwtIssuer.createJWT({ username })
-            : await this.spaceServer.jwtIssuer.createJWT(
+            ? await this.jwtIssuer.createJWT({ username })
+            : await this.jwtIssuer.createJWT(
               { username },
               authenticationExpirySeconds,
             );
@@ -296,52 +261,60 @@ export class HttpServer {
             Date.now() + authenticationExpirySeconds * 1000,
           );
           setCookie(c, authCookieName(url.host), jwt, {
+            path: `${this.options.hostUrlPrefix ?? ""}/`,
             expires: inAWeek,
-            // sameSite: "Strict",
-            // httpOnly: true,
           });
           if (rememberMe) {
-            setCookie(c, "refreshLogin", "true", { expires: inAWeek });
+            setCookie(c, "refreshLogin", "true", {
+              path: `${this.options.hostUrlPrefix ?? ""}/`,
+              expires: inAWeek,
+            });
           }
           const values = await req.parseBody();
           const from = values["from"];
-          return c.redirect(typeof from === "string" ? from : "/");
+          return c.redirect(
+            this.prefixedUrl(typeof from === "string" ? from : "/"),
+          );
         } else {
           console.error("Authentication failed, redirecting to auth page.");
           lockoutTimer.addCount();
-          return c.redirect("/.auth?error=1");
+          return c.redirect(this.prefixedUrl("/.auth?error=1"));
         }
       },
     ).all((c) => {
-      return c.redirect("/.auth");
+      return c.redirect(this.prefixedUrl("/.auth"));
     });
 
-    // Check auth
+    // Check auth on every other request
     this.app.use("*", async (c, next) => {
-      const req = c.req;
-      if (!this.spaceServer.auth) {
+      if (!this.options.auth) {
         // Auth disabled in this config, skip
         return next();
       }
-      const url = new URL(req.url);
+      const req = c.req;
+      const url = new URL(this.unprefixedUrl(req.url));
+      const path = this.unprefixedUrl(req.path);
       const host = url.host;
       const redirectToAuth = () => {
         // Try filtering api paths
-        if (req.path.startsWith("/.") || req.path.endsWith(".md")) {
-          return c.redirect("/.auth", 401 as any);
+        if (path.startsWith("/.") || path.endsWith(".md")) {
+          return c.redirect(this.prefixedUrl("/.auth"), 401 as any);
         } else {
-          return c.redirect(`/.auth?from=${req.path}`, 401 as any);
+          return c.redirect(
+            this.prefixedUrl(`/.auth?from=${path}`),
+            302 as any,
+          );
         }
       };
       if (!excludedPaths.includes(url.pathname)) {
         const authCookie = getCookie(c, authCookieName(host));
 
-        if (!authCookie && this.spaceServer.auth?.authToken) {
+        if (!authCookie && this.options.auth?.authToken) {
           // Attempt Bearer Authorization based authentication
           const authHeader = req.header("Authorization");
           if (authHeader && authHeader.startsWith("Bearer ")) {
             const authToken = authHeader.slice("Bearer ".length);
-            if (authToken === this.spaceServer.auth.authToken) {
+            if (authToken === this.options.auth.authToken) {
               // All good, let's proceed
               this.refreshLogin(c, host);
               return next();
@@ -357,10 +330,10 @@ export class HttpServer {
           console.log("Unauthorized access, redirecting to auth page");
           return redirectToAuth();
         }
-        const { user: expectedUser } = this.spaceServer.auth!;
+        const { user: expectedUser } = this.options.auth!;
 
         try {
-          const verifiedJwt = await this.spaceServer.jwtIssuer
+          const verifiedJwt = await this.jwtIssuer
             .verifyAndDecodeJWT(
               authCookie,
             );
@@ -382,10 +355,9 @@ export class HttpServer {
     // Fetch config
     this.app.get("/.config", (c) => {
       const clientConfig: ClientConfig = {
-        readOnly: this.spaceServer.readOnly,
-        enableSpaceScript: this.spaceServer.enableSpaceScript,
-        spaceFolderPath: this.spaceServer.pagesPath,
-        indexPage: this.spaceServer.indexPage,
+        readOnly: this.options.readOnly,
+        spaceFolderPath: this.options.pagesPath,
+        indexPage: this.options.indexPage,
       };
       return c.json(clientConfig, 200, {
         "Cache-Control": "no-cache",
@@ -403,17 +375,8 @@ export class HttpServer {
     this.app.post("/.shell", (c) => {
       return handleShellEndpoint(
         c,
-        this.spaceServer.shellBackend,
-        this.spaceServer.readOnly,
-      );
-    });
-
-    // Shell WebSocket endpoint
-    this.app.get("/.shell/stream", (c) => {
-      return handleShellStreamEndpoint(
-        c,
-        this.spaceServer.pagesPath,
-        this.spaceServer.readOnly,
+        this.shellBackend,
+        this.options.readOnly,
       );
     });
 
@@ -423,7 +386,7 @@ export class HttpServer {
       proxyPathRegex,
       async (c) => {
         const req = c.req;
-        if (this.spaceServer.readOnly) {
+        if (this.options.readOnly) {
           return c.text("Read only mode, no proxy allowed", 405);
         }
 
@@ -484,11 +447,15 @@ export class HttpServer {
       const jwt = getCookie(c, authCookieName(host));
       if (jwt) {
         setCookie(c, authCookieName(host), jwt, {
+          path: `${this.options.hostUrlPrefix ?? ""}/`,
           expires: inAWeek,
           // sameSite: "Strict",
           // httpOnly: true,
         });
-        setCookie(c, "refreshLogin", "true", { expires: inAWeek });
+        setCookie(c, "refreshLogin", "true", {
+          path: `${this.options.hostUrlPrefix ?? ""}/`,
+          expires: inAWeek,
+        });
       }
     }
   }
@@ -499,14 +466,14 @@ export class HttpServer {
       const req = c.req;
       if (req.header("X-Sync-Mode")) {
         // Only handle direct requests for a JSON representation of the file list
-        const files = await this.spaceServer.spacePrimitives.fetchFileList();
+        const files = await this.spacePrimitives.fetchFileList();
         return c.json(files, 200, {
-          "X-Space-Path": this.spaceServer.pagesPath,
+          "X-Space-Path": this.options.pagesPath,
         });
       } else {
         // Otherwise, redirect to the UI
         // The reason to do this is to handle authentication systems like Authelia nicely
-        return c.redirect("/");
+        return c.redirect(this.prefixedUrl("/"));
       }
     });
 
@@ -528,7 +495,7 @@ export class HttpServer {
         console.warn(
           "Request was without X-Sync-Mode nor a CORS request, redirecting to page",
         );
-        return c.redirect(`/${name.slice(0, -mdExt.length)}`);
+        return c.redirect(this.prefixedUrl(`/${name.slice(0, -mdExt.length)}`));
       }
       // This is a good guess that the request comes directly from a user
       if (
@@ -546,12 +513,12 @@ export class HttpServer {
       try {
         if (req.header("X-Get-Meta")) {
           // Getting meta via GET request
-          const fileData = await this.spaceServer.spacePrimitives.getFileMeta(
+          const fileData = await this.spacePrimitives.getFileMeta(
             name,
           );
           return c.text("", 200, this.fileMetaToHeaders(fileData));
         }
-        const fileData = await this.spaceServer.spacePrimitives.readFile(name);
+        const fileData = await this.spacePrimitives.readFile(name);
         const lastModifiedHeader = new Date(fileData.meta.lastModified)
           .toUTCString();
         if (
@@ -571,7 +538,7 @@ export class HttpServer {
       async (c) => {
         const req = c.req;
         const name = req.param("path")!;
-        if (this.spaceServer.readOnly) {
+        if (this.options.readOnly) {
           return c.text("Read only mode, no writes allowed", 405);
         }
         console.log("Writing file", name);
@@ -583,7 +550,7 @@ export class HttpServer {
         const body = await req.arrayBuffer();
 
         try {
-          const meta = await this.spaceServer.spacePrimitives.writeFile(
+          const meta = await this.spacePrimitives.writeFile(
             name,
             new Uint8Array(body),
           );
@@ -596,7 +563,7 @@ export class HttpServer {
     ).delete(async (c) => {
       const req = c.req;
       const name = req.param("path")!;
-      if (this.spaceServer.readOnly) {
+      if (this.options.readOnly) {
         return c.text("Read only mode, no writes allowed", 405);
       }
       console.log("Deleting file", name);
@@ -605,7 +572,7 @@ export class HttpServer {
         return c.text("Forbidden", 403);
       }
       try {
-        await this.spaceServer.spacePrimitives.deleteFile(name);
+        await this.spacePrimitives.deleteFile(name);
         return c.text("OK");
       } catch (e: any) {
         console.error("Error deleting document", e);
@@ -625,23 +592,43 @@ export class HttpServer {
     };
   }
 
-  stop() {
-    if (this.abortController) {
-      this.abortController.abort();
-      console.log("stopped server");
+  private prefixedUrl(url: string): string {
+    return applyUrlPrefix(url, this.options.hostUrlPrefix);
+  }
+
+  private unprefixedUrl(url: string): string {
+    return removeUrlPrefix(url, this.options.hostUrlPrefix);
+  }
+
+  async ensureBasicPages() {
+    await this.ensurePageWithContent(
+      `${this.options.indexPage}.md`,
+      INDEX_TEMPLATE,
+    );
+
+    const files = await this.spacePrimitives.fetchFileList();
+    const hasConfig = files.some(
+      (f) => f.name === "CONFIG.md" || f.name.endsWith("/CONFIG.md"),
+    );
+    if (!hasConfig) {
+      await this.ensurePageWithContent("CONFIG.md", CONFIG_TEMPLATE);
     }
   }
-}
 
-function utcDateString(mtime: number): string {
-  return new Date(mtime).toUTCString();
-}
-
-function authCookieName(host: string) {
-  return `auth_${host.replaceAll(/\W/g, "_")}`;
-}
-
-function stripHtml(html: string): string {
-  const regex = /<[^>]*>/g;
-  return html.replace(regex, "");
+  private async ensurePageWithContent(path: string, content: string) {
+    try {
+      // This will blow up if the page doesn't exist
+      await this.spacePrimitives.getFileMeta(path);
+    } catch (e: any) {
+      if (e.message === "Not found") {
+        console.info(path, "page not found, creating...");
+        await this.spacePrimitives.writeFile(
+          path,
+          new TextEncoder().encode(content),
+        );
+      } else {
+        throw e;
+      }
+    }
+  }
 }

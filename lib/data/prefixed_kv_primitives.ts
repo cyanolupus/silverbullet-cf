@@ -1,11 +1,16 @@
-import type { KV, KvKey } from "../../plug-api/types.ts";
 import type { KvPrimitives, KvQueryOptions } from "./kv_primitives.ts";
+
+import type { KV, KvKey } from "../../type/datastore.ts";
 
 /**
  * Turns any KvPrimitives into a KvPrimitives that automatically prefixes all keys (and removes them again when reading)
  */
 export class PrefixedKvPrimitives implements KvPrimitives {
   constructor(private wrapped: KvPrimitives, private prefix: KvKey) {
+  }
+
+  clear(): Promise<void> {
+    return this.wrapped.clear();
   }
 
   batchGet(keys: KvKey[]): Promise<any[]> {
@@ -31,6 +36,7 @@ export class PrefixedKvPrimitives implements KvPrimitives {
       yield { key: this.stripPrefix(result.key), value: result.value };
     }
   }
+
   close(): void {
     this.wrapped.close();
   }

@@ -19,6 +19,20 @@ export function renderParseTree(tree: ParseTree): Promise<string> {
   return syscall("markdown.renderParseTree", tree);
 }
 
+/**
+ * Expands custom markdown Lua directives and transclusions into plain markdown
+ * @param tree the parse tree
+ * @returns the expaneded markdown
+ */
 export function expandMarkdown(tree: ParseTree): Promise<ParseTree> {
   return syscall("markdown.expandMarkdown", tree);
+}
+
+/**
+ * Renders markdown text to HTML.
+ * @param markdownText the markdown text to render
+ * @returns HTML representation of the markdown
+ */
+export function markdownToHtml(markdownText: string): Promise<string> {
+  return syscall("markdown.markdownToHtml", markdownText);
 }

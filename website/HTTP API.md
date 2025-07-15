@@ -12,5 +12,12 @@ The API:
   * (optional) `X-Content-Length`: which will be the same as `Content-Length` except if the request was sent with a `X-Get-Meta` header and the body is not returned (then `Content-Length` will be `0` and `X-Content-Length` will be the size of the file)
 * `PUT /*.*`: The same as `GET` except that it takes the body of the request and _writes_ it to a file.
 * `DELETE /*.*`: Again the same, except this will _delete_ the given file.
-* `GET /.client/*`: Retrieve files implementing the client
 * `GET /*` and `GET /`: Anything else (any path without a file extension) will serve the SilverBullet UI HTML.
+* `GET /.client/*`: Retrieve files implementing the client
+* `GET /.config`: Retrieve client configuration, JSON with the following keys:
+  * `readOnly`: Run the client in read-only mode
+  * `spaceFolderPath`: Path of the space (used to prefix client database names to support switching space folders)
+  * `indexPage`: name of the index page
+* `GET /.ping`: Returns 200 if the server is available
+* `POST /.shell`: Run a shell command on the server side and return the result
+* `* /.proxy/<uri>`: Proxy a HTTP request (to avoid CORS issues) 

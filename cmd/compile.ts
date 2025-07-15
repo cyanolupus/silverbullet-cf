@@ -4,15 +4,14 @@ import { denoPlugins } from "@luca/esbuild-deno-loader";
 import * as esbuild from "esbuild";
 import { bundleAssets } from "../lib/asset_bundle/builder.ts";
 import type { Manifest } from "../lib/plugos/types.ts";
-// import { version } from "../version.ts";
+import { version } from "../version.ts";
 
-const workerRuntimeUrl = new URL(
-  "../lib/plugos/worker_runtime.ts",
-  import.meta.url,
-);
-// TODO: Re-enable this once we have a stable version
-// const workerRuntimeUrl =
-//   `https://deno.land/x/silverbullet@${version}/lib/plugos/worker_runtime.ts`;
+// const workerRuntimeUrl = new URL(
+//   "../lib/plugos/worker_runtime.ts",
+//   import.meta.url,
+// );
+const workerRuntimeUrl =
+  `https://deno.land/x/silverbullet@${version}/lib/plugos/worker_runtime.ts`;
 
 export type CompileOptions = {
   debug?: boolean;
@@ -69,7 +68,7 @@ ${
       filePath = path.join(rootPath, filePath);
 
       return `import {${jsFunctionName} as ${funcName}} from "file://${
-        // Replacaing \ with / for Windows
+        // Replacing \ with / for Windows
         path.resolve(filePath).replaceAll(
           "\\",
           "\\\\",
@@ -109,7 +108,7 @@ setupMessageListener(functionMapping, manifest, self.postMessage);
     format: "esm",
     globalName: "mod",
     platform: "browser",
-    sourcemap: options.debug ? "linked" : false,
+    sourcemap: options.debug ? "linked" : undefined,
     minify: !options.debug,
     outfile: outFile,
     metafile: options.info,
@@ -119,7 +118,6 @@ setupMessageListener(functionMapping, manifest, self.postMessage);
         configPath: options.configPath &&
           path.resolve(Deno.cwd(), options.configPath),
         importMapURL: options.importMap,
-        loader: "native",
       }),
     ],
     absWorkingDir: path.resolve(path.dirname(inFile)),
@@ -145,6 +143,7 @@ export async function compileManifests(
 ) {
   let building = false;
   dist = path.resolve(dist);
+
   async function buildAll() {
     if (building) {
       return;

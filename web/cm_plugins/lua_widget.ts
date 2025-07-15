@@ -1,20 +1,20 @@
 import { WidgetType } from "@codemirror/view";
 import type { Client } from "../client.ts";
-import { renderMarkdownToHtml } from "../../plugs/markdown/markdown_render.ts";
+import { renderMarkdownToHtml } from "../markdown/markdown_render.ts";
 import {
   isLocalPath,
   resolvePath,
 } from "@silverbulletmd/silverbullet/lib/resolve";
-import { parse } from "$common/markdown_parser/parse_tree.ts";
-import { extendedMarkdownLanguage } from "$common/markdown_parser/parser.ts";
+import { parse } from "../markdown_parser/parse_tree.ts";
+import { extendedMarkdownLanguage } from "../markdown_parser/parser.ts";
 import { renderToText } from "@silverbulletmd/silverbullet/lib/tree";
 import {
   attachWidgetEventHandlers,
   moveCursorIntoText,
 } from "./widget_util.ts";
-import { expandMarkdown } from "$common/markdown.ts";
-import { LuaStackFrame, LuaTable } from "$common/space_lua/runtime.ts";
-import { jsonToMDTable } from "$common/markdown_util.ts";
+import { expandMarkdown } from "../markdown.ts";
+import { LuaStackFrame, LuaTable } from "../../lib/space_lua/runtime.ts";
+import { isBlockMarkdown, jsonToMDTable } from "../markdown_util.ts";
 import { activeWidgets } from "./code_widget.ts";
 
 export type LuaWidgetCallback = (
@@ -53,6 +53,11 @@ export class LuaWidget extends WidgetType {
     readonly inPage: boolean,
   ) {
     super();
+  }
+
+  override get estimatedHeight(): number {
+    const cacheItem = this.client.getWidgetCache(this.cacheKey);
+    return cacheItem ? cacheItem.height : -1;
   }
 
   toDOM(): HTMLElement {
@@ -149,7 +154,7 @@ export class LuaWidget extends WidgetType {
       }
 
       block = widgetContent._isWidget && widgetContent.display === "block" ||
-        trimmedMarkdown.includes("\n");
+        isBlockMarkdown(trimmedMarkdown);
       if (block) {
         div.className += " sb-lua-directive-block";
       } else {
@@ -163,9 +168,6 @@ export class LuaWidget extends WidgetType {
       );
 
       html = parseHtmlString(renderMarkdownToHtml(mdTree, {
-        // Annotate every element with its position so we can use it to put
-        // the cursor there when the user clicks on the table.
-        annotationPositions: true,
         translateUrls: (url) => {
           if (isLocalPath(url)) {
             url = resolvePath(
@@ -261,11 +263,6 @@ export class LuaWidget extends WidgetType {
     container.appendChild(content);
 
     return container;
-  }
-
-  override get estimatedHeight(): number {
-    const cacheItem = this.client.getWidgetCache(this.cacheKey);
-    return cacheItem ? cacheItem.height : -1;
   }
 
   override eq(other: WidgetType): boolean {

@@ -1,7 +1,7 @@
-import { DiskSpacePrimitives } from "$common/spaces/disk_space_primitives.ts";
-import type { SpacePrimitives } from "$common/spaces/space_primitives.ts";
+import { DiskSpacePrimitives } from "../lib/spaces/disk_space_primitives.ts";
+import type { SpacePrimitives } from "../lib/spaces/space_primitives.ts";
 import { resolve } from "@std/path";
-import { HttpSpacePrimitives } from "$common/spaces/http_space_primitives.ts";
+import { HttpSpacePrimitives } from "../lib/spaces/http_space_primitives.ts";
 
 export function determineStorageBackend(
   folder: string,

@@ -1,5 +1,5 @@
-import { version } from "../version.ts";
+import { publicVersion } from "../public_version.ts";
 
 export function versionCommand() {
-  console.log(version);
+  console.log(publicVersion);
 }

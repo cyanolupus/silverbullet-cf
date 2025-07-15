@@ -2,11 +2,11 @@ import type {
   IndexTreeEvent,
   PageCreatingContent,
   PageCreatingEvent,
-} from "../../plug-api/types.ts";
+} from "../../type/event.ts";
 import { renderToText } from "@silverbulletmd/silverbullet/lib/tree";
 import { editor } from "@silverbulletmd/silverbullet/syscalls";
 import { ftsIndexPage, ftsSearch } from "./engine.ts";
-import { PromiseQueue } from "$lib/async.ts";
+import { PromiseQueue } from "../../lib/async.ts";
 
 const searchPrefix = "search:";
 

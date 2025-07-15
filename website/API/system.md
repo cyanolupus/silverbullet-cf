@@ -13,23 +13,6 @@ Example:
 system.invokeFunction("myplug.processData", "input", 123)
 ```
 
-### system.invokeCommand(name, args)
-Invokes a client command by name.
-
-Example:
-```lua
-system.invokeCommand("editor.save", {})
-```
-
-### system.invokeSpaceFunction(name, ...)
-Invokes a space function by name.
-
-Example:
-```lua
-local result = system.invokeSpaceFunction("customFunction", "arg1", "arg2")
-print("Function result:", result)
-```
-
 ## System Information
 
 ### system.listCommands()

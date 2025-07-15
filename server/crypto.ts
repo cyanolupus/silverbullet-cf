@@ -1,7 +1,9 @@
 import { create, getNumericDate, verify } from "djwt";
-import type { KvPrimitives } from "$lib/data/kv_primitives.ts";
+import type { KvPrimitives } from "../lib/data/kv_primitives.ts";
 
-const jwtSecretKey = "jwtSecretKey";
+import type { KvKey } from "../type/datastore.ts";
+
+const jwtSecretKey: KvKey = ["jwtSecretKey"];
 
 export class JWTIssuer {
   private key!: CryptoKey;
@@ -11,7 +13,7 @@ export class JWTIssuer {
 
   // authString is only used to compare hashes to see if the auth has changed
   async init(authString: string) {
-    const [secret] = await this.kv.batchGet([[jwtSecretKey]]);
+    const [secret] = await this.kv.batchGet([jwtSecretKey]);
     if (!secret) {
       console.log("Generating new JWT secret key");
       return this.generateNewKey();
@@ -53,7 +55,7 @@ export class JWTIssuer {
       ["sign", "verify"],
     );
     await this.kv.batchSet([{
-      key: [jwtSecretKey],
+      key: jwtSecretKey,
       value: await crypto.subtle.exportKey("jwk", this.key),
     }]);
   }

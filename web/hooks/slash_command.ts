@@ -1,5 +1,5 @@
-import type { Hook, Manifest } from "$lib/plugos/types.ts";
-import type { System } from "$lib/plugos/system.ts";
+import type { Hook, Manifest } from "../../lib/plugos/types.ts";
+import type { System } from "../../lib/plugos/system.ts";
 import type {
   Completion,
   CompletionContext,
@@ -7,30 +7,24 @@ import type {
 } from "@codemirror/autocomplete";
 import type { Client } from "../client.ts";
 import { syntaxTree } from "@codemirror/language";
+import { safeRun, throttle } from "../../lib/async.ts";
+import type { SlashCommandHookT } from "../../lib/manifest.ts";
+import type { SlashCommand } from "../../type/command.ts";
 import type {
   SlashCompletionOption,
   SlashCompletions,
-} from "../../plug-api/types.ts";
-import { safeRun, throttle } from "$lib/async.ts";
-import type { SlashCommandDef, SlashCommandHookT } from "$lib/manifest.ts";
-import type { Shortcut } from "@silverbulletmd/silverbullet/type/client";
-
-export type AppSlashCommand = {
-  slashCommand: SlashCommandDef;
-  run: () => Promise<void>;
-};
+} from "@silverbulletmd/silverbullet/type/client";
 
 const slashCommandRegexp = /([^\w:]|^)\/[\w#\-]*/;
 
 export class SlashCommandHook implements Hook<SlashCommandHookT> {
-  slashCommands: AppSlashCommand[] = [];
-
-  constructor(private client: Client) {
-  }
-
+  slashCommands: SlashCommand[] = [];
   throttledBuildAllCommands = throttle(() => {
     this.buildAllCommands();
   }, 200);
+
+  constructor(private client: Client) {
+  }
 
   buildAllCommands() {
     const clientSystem = this.client.clientSystem;
@@ -48,7 +42,7 @@ export class SlashCommandHook implements Hook<SlashCommandHookT> {
         }
         const cmd = functionDef.slashCommand;
         this.slashCommands.push({
-          slashCommand: cmd,
+          ...cmd,
           run: () => {
             return plug.invoke(name, [cmd]);
           },
@@ -58,25 +52,13 @@ export class SlashCommandHook implements Hook<SlashCommandHookT> {
     // Iterate over script defined slash commands
     for (
       const command of Object.values(
-        clientSystem.scriptEnv.slashCommands,
+        this.client.config.get<Record<string, SlashCommand>>(
+          "slashCommands",
+          {},
+        ),
       )
     ) {
       this.slashCommands.push(command);
-    }
-    // Iterate over all shortcuts
-    // Add slash commands for shortcuts that configure them
-    for (
-      const shortcut of this.client.config.get<Shortcut[]>("shortcuts", [])
-    ) {
-      if (shortcut.slashCommand) {
-        this.slashCommands.push({
-          slashCommand: {
-            name: shortcut.slashCommand,
-            description: shortcut.command,
-          },
-          run: () => this.client.runCommandByName(shortcut.command),
-        });
-      }
     }
   }
 
@@ -104,23 +86,24 @@ export class SlashCommandHook implements Hook<SlashCommandHookT> {
     const parentNodes = this.client.extractParentNodes(ctx.state, currentNode);
     for (const def of this.slashCommands) {
       if (
-        def.slashCommand.onlyContexts && !def.slashCommand.onlyContexts.some(
-          (context) => parentNodes.some((node) => node.startsWith(context)),
+        def.onlyContexts &&
+        !def.onlyContexts.some((context) =>
+          parentNodes.some((node) => node.startsWith(context))
         )
       ) {
         continue;
       }
       if (
-        def.slashCommand.exceptContexts && def.slashCommand.exceptContexts.some(
+        def.exceptContexts && def.exceptContexts.some(
           (context) => parentNodes.some((node) => node.startsWith(context)),
         )
       ) {
         continue;
       }
       options.push({
-        label: def.slashCommand.name,
-        detail: def.slashCommand.description,
-        boost: def.slashCommand.boost,
+        label: def.name,
+        detail: def.description,
+        boost: def.priority,
         apply: () => {
           // Delete slash command part
           this.client.editorView.dispatch({
@@ -132,7 +115,7 @@ export class SlashCommandHook implements Hook<SlashCommandHookT> {
           });
           // Replace with whatever the completion is
           safeRun(async () => {
-            await def.run();
+            await def.run!();
             this.client.focus();
           });
         },

@@ -4,6 +4,7 @@ import type {
   ProxyFetchRequest64,
   ProxyFetchResponse64,
 } from "../proxy_fetch.ts";
+import { base64Decode, base64Encode } from "../crypto.ts";
 
 declare global {
   function syscall(name: string, ...args: any[]): Promise<any>;
@@ -136,28 +137,6 @@ export function setupMessageListener(
   });
 }
 
-export function base64Decode(s: string): Uint8Array {
-  const binString = atob(s);
-  const len = binString.length;
-  const bytes = new Uint8Array(len);
-  for (let i = 0; i < len; i++) {
-    bytes[i] = binString.charCodeAt(i);
-  }
-  return bytes;
-}
-
-export function base64Encode(buffer: Uint8Array | string): string {
-  if (typeof buffer === "string") {
-    buffer = new TextEncoder().encode(buffer);
-  }
-  let binary = "";
-  const len = buffer.byteLength;
-  for (let i = 0; i < len; i++) {
-    binary += String.fromCharCode(buffer[i]);
-  }
-  return btoa(binary);
-}
-
 export async function sandboxFetch(
   reqInfo: RequestInfo,
   options?: ProxyFetchRequest64,
@@ -177,6 +156,7 @@ export async function sandboxFetch(
 
 // @ts-ignore: monkey patching fetch
 globalThis.nativeFetch = globalThis.fetch;
+
 // Monkey patch fetch()
 export function monkeyPatchFetch() {
   // @ts-ignore: monkey patching fetch

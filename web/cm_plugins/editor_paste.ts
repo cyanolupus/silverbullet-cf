@@ -1,23 +1,23 @@
 import { syntaxTree } from "@codemirror/language";
 import { EditorView, ViewPlugin, type ViewUpdate } from "@codemirror/view";
 import type { Client } from "../client.ts";
-import type { UploadFile } from "@silverbulletmd/silverbullet/types";
 
 // We use turndown to convert HTML to Markdown
 import TurndownService from "turndown";
 
 // With tables and task notation as well
 import { tables, taskListItems } from "turndown-plugin-gfm";
-import { lezerToParseTree } from "$common/markdown_parser/parse_tree.ts";
+import { lezerToParseTree } from "../markdown_parser/parse_tree.ts";
 import {
   addParentPointers,
   findParentMatching,
   nodeAtPos,
 } from "@silverbulletmd/silverbullet/lib/tree";
 import { maximumDocumentSize } from "../constants.ts";
-import { safeRun } from "$lib/async.ts";
+import { safeRun } from "../../lib/async.ts";
 import { resolvePath } from "@silverbulletmd/silverbullet/lib/resolve";
-import { localDateString } from "$lib/dates.ts";
+import { localDateString } from "../../lib/dates.ts";
+import type { UploadFile } from "@silverbulletmd/silverbullet/type/client";
 
 const turndownService = new TurndownService({
   hr: "---",

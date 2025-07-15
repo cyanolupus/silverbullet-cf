@@ -8,6 +8,8 @@ import {
 } from "@codemirror/language";
 import {
   deleteLine,
+  insertNewline,
+  insertNewlineAndIndent,
   moveLineDown,
   moveLineUp,
   redo,
@@ -16,14 +18,16 @@ import {
 import type { Transaction } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { getCM as vimGetCm, Vim } from "@replit/codemirror-vim";
-import type { SysCallMapping } from "$lib/plugos/system.ts";
+import type { SysCallMapping } from "../../lib/plugos/system.ts";
 import type {
   FilterOption,
-  VimConfig,
+  UploadFile,
 } from "@silverbulletmd/silverbullet/type/client";
-import type { PageMeta, UploadFile } from "../../plug-api/types.ts";
 import { openSearchPanel } from "@codemirror/search";
 import { parseRef, type Ref } from "@silverbulletmd/silverbullet/lib/page_ref";
+import { insertNewlineContinueMarkup } from "@codemirror/lang-markdown";
+import type { VimConfig } from "../../type/config.ts";
+import type { PageMeta } from "../../type/index.ts";
 
 export function editorSyscalls(client: Client): SysCallMapping {
   const syscalls: SysCallMapping = {
@@ -106,13 +110,16 @@ export function editorSyscalls(client: Client): SysCallMapping {
     },
     "editor.reloadConfigAndCommands": async () => {
       await client.clientSystem.system.localSyscall(
-        "system.loadSpaceScripts",
+        "system.loadScripts",
         [],
       );
       await client.clientSystem.system.localSyscall(
         "system.loadSpaceStyles",
         [],
       );
+    },
+    "editor.invokeCommand": (_ctx, name: string, args?: string[]) => {
+      return client.runCommandByName(name, args);
     },
     "editor.openUrl": (_ctx, url: string, existingWindow = false) => {
       client.openUrl(url, existingWindow);
@@ -221,6 +228,13 @@ export function editorSyscalls(client: Client): SysCallMapping {
         // Dummy dispatch to rerender the editor and toggle the panel
         client.editorView.dispatch({});
       });
+    },
+    "editor.showProgress": (
+      _ctx,
+      progressPercentage?: number,
+      progressType?: "sync" | "index",
+    ) => {
+      client.showProgress(progressPercentage, progressType);
     },
     "editor.insertAtPos": (
       _ctx,
@@ -393,7 +407,45 @@ export function editorSyscalls(client: Client): SysCallMapping {
         throw new Error("Vim mode not active or not initialized.");
       }
     },
-    "editor.vimConfig": () => {
+    "editor.configureVimMode": () => {
+      // Override the default "o" binding to be more intelligent and follow the markdown editor's behavior
+      Vim.mapCommand("o", "action", "newline-continue-markup", {}, {});
+      Vim.mapCommand("O", "action", "back-newline-continue-markup", {}, {});
+      Vim.unmap("<C-q>", undefined as any);
+      Vim.defineAction("newline-continue-markup", (cm) => {
+        // Append at end of line
+        Vim.handleKey(cm, "A", "+input");
+        // Insert newline continuing markup where appropriate
+        insertNewlineContinueMarkup(client.editorView) ||
+          insertNewlineAndIndent(client.editorView);
+      });
+      Vim.defineAction("back-newline-continue-markup", (cm) => {
+        // Determine current line
+        const pos = client.editorView.state.selection.main.from;
+        const line = client.editorView.state.doc.lineAt(pos).number;
+        if (line === 1) {
+          // We're on the top line
+          // Go to 0:0
+          Vim.handleKey(cm, "0", "+input");
+          // Insert a newline
+          insertNewline(client.editorView);
+          // Go up to the new line
+          Vim.handleKey(cm, "k", "+input");
+          // Into insert mode
+          Vim.handleKey(cm, "i", "+input");
+        } else {
+          // We're elsewhere in the document
+          // Go up
+          Vim.handleKey(cm, "k", "+input");
+          // Append mode at the end of the line
+          Vim.handleKey(cm, "A", "+input");
+          // Insert a newline using the continue markup thing
+          insertNewlineContinueMarkup(client.editorView) ||
+            insertNewlineAndIndent(client.editorView);
+        }
+      });
+
+      // Load the config if any
       const config = client.config.get<VimConfig>("vim", {});
       if (config) {
         config.unmap?.forEach((binding) => {

@@ -7,17 +7,20 @@ import {
   isCursorInRange,
 } from "./util.ts";
 
-import { renderMarkdownToHtml } from "../../plugs/markdown/markdown_render.ts";
+import { renderMarkdownToHtml } from "../markdown/markdown_render.ts";
 import { type ParseTree, renderToText } from "../../plug-api/lib/tree.ts";
-import { lezerToParseTree } from "$common/markdown_parser/parse_tree.ts";
+import { lezerToParseTree } from "../markdown_parser/parse_tree.ts";
 import type { Client } from "../client.ts";
 import {
   isLocalPath,
   resolvePath,
 } from "@silverbulletmd/silverbullet/lib/resolve";
+import { expandMarkdown } from "../markdown.ts";
+import { LuaStackFrame } from "../../lib/space_lua/runtime.ts";
 
 class TableViewWidget extends WidgetType {
   tableBodyText: string;
+
   constructor(
     readonly pos: number,
     readonly client: Client,
@@ -25,6 +28,12 @@ class TableViewWidget extends WidgetType {
   ) {
     super();
     this.tableBodyText = renderToText(t);
+  }
+
+  override get estimatedHeight(): number {
+    return this.client.getCachedWidgetHeight(
+      `table:${this.tableBodyText}`,
+    );
   }
 
   toDOM(): HTMLElement {
@@ -41,35 +50,37 @@ class TableViewWidget extends WidgetType {
       });
     });
 
-    dom.innerHTML = renderMarkdownToHtml(this.t, {
-      // Annotate every element with its position so we can use it to put
-      // the cursor there when the user clicks on the table.
-      annotationPositions: true,
-      translateUrls: (url) => {
-        if (isLocalPath(url)) {
-          url = resolvePath(this.client.currentPage, decodeURI(url));
-        }
+    const sf = LuaStackFrame.createWithGlobalEnv(
+      client.clientSystem.spaceLuaEnv.env,
+    );
+    expandMarkdown(
+      client,
+      this.t,
+      client.clientSystem.spaceLuaEnv.env,
+      sf,
+    ).then((t) => {
+      dom.innerHTML = renderMarkdownToHtml(t, {
+        // Annotate every element with its position so we can use it to put
+        // the cursor there when the user clicks on the table.
+        annotationPositions: true,
+        translateUrls: (url) => {
+          if (isLocalPath(url)) {
+            url = resolvePath(this.client.currentPage, decodeURI(url));
+          }
 
-        return url;
-      },
-      preserveAttributes: true,
-    });
-
-    setTimeout(() => {
-      this.client.setCachedWidgetHeight(
-        `table:${this.tableBodyText}`,
-        dom.clientHeight,
-      );
+          return url;
+        },
+        preserveAttributes: true,
+      });
+      setTimeout(() => {
+        // Give it a tick to render
+        this.client.setCachedWidgetHeight(
+          `table:${this.tableBodyText}`,
+          dom.clientHeight,
+        );
+      });
     });
     return dom;
-  }
-
-  override get estimatedHeight(): number {
-    const height = this.client.getCachedWidgetHeight(
-      `table:${this.tableBodyText}`,
-    );
-    // console.log("Calling estimated height for table", height);
-    return height;
   }
 
   override eq(other: WidgetType): boolean {

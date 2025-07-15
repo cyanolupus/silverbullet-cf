@@ -26,7 +26,7 @@ function widgets.commandButton(text, commandName, args)
   end
   return widget.html(dom.button {
     onclick = function()
-      system.invokeCommand(commandName, args)
+      editor.invokeCommand(commandName, args)
     end,
     text
   })
@@ -63,7 +63,7 @@ function widgets.toc(options)
   local text = editor.getText()
   local pageName = editor.getCurrentPage()
   local parsedMarkdown = markdown.parseMarkdown(text)
-  
+
   -- Collect all headers
   local headers = {}
   for topLevelChild in parsedMarkdown.children do
@@ -73,7 +73,7 @@ function widgets.toc(options)
         local text = ""
         table.remove(topLevelChild.children, 1)
         for child in topLevelChild.children do
-          text = text .. markdown.renderParseTree(child)
+          text = text .. string.trim(markdown.renderParseTree(child))
         end
 
         if text != "" then
@@ -129,7 +129,9 @@ event.listen {
 widgets = widgets or {}
 
 local mentionTemplate = template.new [==[
-* [[${_.ref}]]: “${_.snippet}”
+**[[${_.ref}]]**
+> ${_.snippet}
+
 ]==]
 
 function widgets.linkedMentions(pageName)

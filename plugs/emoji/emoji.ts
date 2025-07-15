@@ -1,7 +1,8 @@
 import emojiBlob from "./emoji.json" with { type: "json" };
-import type { CompleteEvent } from "../../plug-api/types.ts";
 import { editor, system } from "@silverbulletmd/silverbullet/syscalls";
-import type { EmojiConfig } from "@silverbulletmd/silverbullet/type/client";
+
+import type { EmojiConfig } from "../../type/config.ts";
+import type { CompleteEvent } from "@silverbulletmd/silverbullet/type/client";
 
 let emojiConfig: EmojiConfig = { aliases: [] };
 
@@ -54,8 +55,6 @@ async function updateConfig() {
     return;
   }
 
-  // This is simpler to write in SETTINGS and prevents duplicates,
-  // which could be supported but probably aren't user's intent
   const errorMsg =
     "Emoji aliases in space config should be a map with entries 'name: 😀'";
 

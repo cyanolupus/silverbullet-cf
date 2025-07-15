@@ -1,6 +1,6 @@
-import { PlugNamespaceHook } from "$common/hooks/plug_namespace.ts";
+import { PlugNamespaceHook } from "./hooks/plug_namespace.ts";
 import type { SilverBulletHooks } from "../lib/manifest.ts";
-import type { EventHook } from "../common/hooks/event.ts";
+import type { EventHook } from "./hooks/event.ts";
 import { createSandbox } from "../lib/plugos/sandboxes/web_worker_sandbox.ts";
 
 import assetSyscalls from "../lib/plugos/syscalls/asset.ts";
@@ -8,45 +8,51 @@ import { eventSyscalls } from "../lib/plugos/syscalls/event.ts";
 import { System } from "../lib/plugos/system.ts";
 import type { Client } from "./client.ts";
 import { CodeWidgetHook } from "./hooks/code_widget.ts";
-import { CommandHook } from "$common/hooks/command.ts";
+import { CommandHook } from "./hooks/command.ts";
 import { SlashCommandHook } from "./hooks/slash_command.ts";
 import { SyscallHook } from "./hooks/syscall.ts";
 import { clientStoreSyscalls } from "./syscalls/clientStore.ts";
 import { editorSyscalls } from "./syscalls/editor.ts";
 import { sandboxFetchSyscalls } from "./syscalls/fetch.ts";
-import { markdownSyscalls } from "$common/syscalls/markdown.ts";
+import { markdownSyscalls } from "./syscalls/markdown.ts";
 import { shellSyscalls } from "./syscalls/shell.ts";
 import { spaceReadSyscalls, spaceWriteSyscalls } from "./syscalls/space.ts";
 import { syncSyscalls } from "./syscalls/sync.ts";
-import { systemSyscalls } from "$common/syscalls/system.ts";
-import { yamlSyscalls } from "$common/syscalls/yaml.ts";
-import type { Space } from "../common/space.ts";
+import { systemSyscalls } from "./syscalls/system.ts";
+import { yamlSyscalls } from "./syscalls/yaml.ts";
+import type { Space } from "./space.ts";
 import { MQHook } from "../lib/plugos/hooks/mq.ts";
 import { mqSyscalls } from "../lib/plugos/syscalls/mq.ts";
 import {
   dataStoreReadSyscalls,
   dataStoreWriteSyscalls,
-} from "../lib/plugos/syscalls/datastore.ts";
-import type { DataStore } from "$lib/data/datastore.ts";
-import { languageSyscalls } from "$common/syscalls/language.ts";
+} from "./syscalls/datastore.ts";
+import type { DataStore } from "../lib/data/datastore.ts";
+import { languageSyscalls } from "./syscalls/language.ts";
 import { codeWidgetSyscalls } from "./syscalls/code_widget.ts";
 import { clientCodeWidgetSyscalls } from "./syscalls/client_code_widget.ts";
-import { KVPrimitivesManifestCache } from "$lib/plugos/manifest_cache.ts";
+import { KVPrimitivesManifestCache } from "../lib/plugos/manifest_cache.ts";
 import { createKeyBindings } from "./editor_state.ts";
-import type { DataStoreMQ } from "$lib/data/mq.datastore.ts";
-import { plugPrefix } from "$common/spaces/constants.ts";
-import { jsonschemaSyscalls } from "$common/syscalls/jsonschema.ts";
-import { luaSyscalls } from "$common/syscalls/lua.ts";
-import { indexSyscalls } from "$common/syscalls/index.ts";
-import { commandSyscalls } from "$common/syscalls/command.ts";
-import { configSyscalls } from "$common/syscalls/config.ts";
-import { eventListenerSyscalls } from "$common/syscalls/event.ts";
+import type { DataStoreMQ } from "../lib/data/mq.datastore.ts";
+import { plugPrefix } from "../lib/spaces/constants.ts";
+import { jsonschemaSyscalls } from "./syscalls/jsonschema.ts";
+import { luaSyscalls } from "./syscalls/lua.ts";
+import { indexSyscalls } from "./syscalls/index.ts";
+import { configSyscalls } from "./syscalls/config.ts";
+import { eventListenerSyscalls } from "./syscalls/event.ts";
 import { DocumentEditorHook } from "./hooks/document_editor.ts";
-import type { LuaCollectionQuery } from "$common/space_lua/query_collection.ts";
-import type { AppCommand } from "$lib/command.ts";
-import { ScriptEnvironment } from "$common/space_script.ts";
-import { SpaceLuaEnvironment } from "$common/space_lua.ts";
-import type { ParseTree } from "@silverbulletmd/silverbullet/lib/tree";
+import type { LuaCollectionQuery } from "../lib/space_lua/query_collection.ts";
+import type { Command } from "../type/command.ts";
+import { SpaceLuaEnvironment } from "./space_lua.ts";
+import {
+  type ILuaFunction,
+  jsToLuaValue,
+  luaCall,
+  LuaStackFrame,
+  type LuaValue,
+  luaValueToJS,
+} from "../lib/space_lua/runtime.ts";
+import { buildThreadLocalEnv, handleLuaError } from "./space_lua_api.ts";
 
 const plugNameExtractRegex = /\/(.+)\.plug\.js$/;
 const indexVersionKey = ["$indexVersion"];
@@ -69,10 +75,10 @@ export class ClientSystem {
   documentEditorHook!: DocumentEditorHook;
 
   readonly allKnownFiles = new Set<string>();
-  readonly spaceScriptCommands = new Map<string, AppCommand>();
-  scriptEnv: ScriptEnvironment = new ScriptEnvironment();
+  readonly scriptCommands = new Map<string, Command>();
   spaceLuaEnv = new SpaceLuaEnvironment();
   scriptsLoaded: boolean = false;
+  private indexOngoing = false;
 
   constructor(
     private client: Client,
@@ -109,7 +115,7 @@ export class ClientSystem {
     // Command hook
     this.commandHook = new CommandHook(
       this.readOnlyMode,
-      this.spaceScriptCommands,
+      this.scriptCommands,
     );
     this.commandHook.on({
       commandsUpdated: (commandMap) => {
@@ -143,7 +149,7 @@ export class ClientSystem {
           this.system.unload(path);
           await this.system.load(
             plugName,
-            createSandbox(new URL(`/${path}`, location.href)),
+            createSandbox(new URL(`${path}`, document.baseURI)),
             newHash,
           );
         }
@@ -160,7 +166,7 @@ export class ClientSystem {
     this.system.registerSyscalls(
       [],
       eventSyscalls(this.eventHook),
-      eventListenerSyscalls(this),
+      eventListenerSyscalls(this.client),
       editorSyscalls(this.client),
       spaceReadSyscalls(this.client),
       systemSyscalls(client, false),
@@ -172,7 +178,7 @@ export class ClientSystem {
       languageSyscalls(),
       jsonschemaSyscalls(),
       indexSyscalls(client),
-      commandSyscalls(this),
+      //commandSyscalls(client),
       luaSyscalls(this),
       mqSyscalls(this.mq),
       dataStoreReadSyscalls(this.ds, this),
@@ -201,71 +207,38 @@ export class ClientSystem {
     }
   }
 
-  async loadSpaceScripts() {
-    if (!await this.client.hasInitialSyncCompleted()) {
+  async loadScripts() {
+    if (!await this.hasFullIndexCompleted()) {
       console.info(
-        "Not loading space scripts, since initial synca has not completed yet",
+        "Not loading space scripts, since initial indexing has not completed yet",
       );
       return;
     }
-    this.scriptEnv = new ScriptEnvironment();
+    this.client.config.clear();
     try {
       await this.spaceLuaEnv.reload(this.system);
     } catch (e: any) {
-      console.error("Error loading space-script:", e.message);
+      console.error("Error loading Lua script:", e.message);
     }
 
     // Reset the space script commands
-    this.spaceScriptCommands.clear();
-    for (const [name, command] of Object.entries(this.scriptEnv.commands)) {
-      this.spaceScriptCommands.set(name, command);
+    this.scriptCommands.clear();
+    for (
+      const [name, command] of Object.entries(
+        this.client.config.get<Record<string, Command>>("commands", {}),
+      )
+    ) {
+      this.scriptCommands.set(name, command);
     }
 
-    // Inject the registered events in the event hook
-    this.eventHook.scriptEnvironment = this.scriptEnv;
-
-    this.commandHook.throttledBuildAllCommands();
+    // Make scripted (slash) commands available
+    this.commandHook.throttledBuildAllCommandsAndEmit();
     this.slashCommandHook.throttledBuildAllCommands();
 
     this.scriptsLoaded = true;
   }
 
-  invokeSpaceFunction(name: string, args: any[]) {
-    const fn = this.scriptEnv.functions[name];
-    if (!fn) {
-      throw new Error(`Function ${name} not found`);
-    }
-    return fn(...args);
-  }
-
-  async applyAttributeExtractors(
-    tags: string[],
-    text: string,
-    tree: ParseTree,
-  ): Promise<Record<string, any>> {
-    let resultingAttributes: Record<string, any> = {};
-    for (const tag of tags) {
-      const extractors = this.scriptEnv.attributeExtractors[tag];
-      if (!extractors) {
-        continue;
-      }
-      for (const fn of extractors) {
-        const extractorResult = await fn(text, tree);
-        if (extractorResult) {
-          // Merge the attributes in
-          resultingAttributes = {
-            ...resultingAttributes,
-            ...extractorResult,
-          };
-        }
-      }
-    }
-
-    return resultingAttributes;
-  }
-
   async reloadPlugsFromSpace(space: Space) {
-    console.log("Loading plugs");
     await this.system.unloadAll();
     console.log("(Re)loading plugs");
     const allPlugs = await space.listPlugs();
@@ -274,7 +247,12 @@ export class ClientSystem {
         const plugName = plugNameExtractRegex.exec(plugMeta.name)![1];
         await this.system.load(
           plugName,
-          createSandbox(new URL(plugMeta.name, location.origin)),
+          createSandbox(
+            new URL(
+              plugMeta.name,
+              document.baseURI, // We're NOT striping trailing '/', this used to be `location.origin`
+            ),
+          ),
           plugMeta.lastModified,
         );
       } catch (e: any) {
@@ -303,35 +281,65 @@ export class ClientSystem {
     );
   }
 
-  private indexOngoing = false;
+  async ensureFullIndex() {
+    const currentIndexVersion = await this.getCurrentIndexVersion();
 
-  async ensureSpaceIndex() {
-    const currentIndexVersion = await this.ds.get(indexVersionKey);
-
-    console.info("Current space index version", currentIndexVersion);
+    console.info(
+      "[index]",
+      "Current space index version",
+      currentIndexVersion,
+      "index ongoing?",
+      this.indexOngoing,
+    );
 
     if (currentIndexVersion !== desiredIndexVersion && !this.indexOngoing) {
       console.info(
+        "[index]",
         "Performing a full space reindex, this could take a while...",
       );
-      // First let's fetch all pages to make sure we have a cache of known pages
-      // await this.client.space.fetchPageList();
       this.indexOngoing = true;
       await this.system.invokeFunction("index.reindexSpace", []);
-      console.info("Full space index complete.");
-      await this.markFullSpaceIndexComplete(this.ds);
+      console.info("[index]", "Full space index complete.");
+      await this.markFullSpaceIndexComplete();
       this.indexOngoing = false;
       // Let's load space scripts again, which probably weren't loaded before
       console.log(
         "Now loading space scripts, custom styles and rebuilding editor state",
       );
-      await this.loadSpaceScripts();
+      await this.loadScripts();
       await this.client.loadCustomStyles();
       this.client.rebuildEditorState();
     }
   }
 
-  async markFullSpaceIndexComplete(ds: DataStore) {
-    await ds.set(indexVersionKey, desiredIndexVersion);
+  public async evalLuaFunction(
+    luaFunction: ILuaFunction,
+    args: LuaValue[],
+  ): Promise<LuaValue> {
+    const tl = await buildThreadLocalEnv(
+      this.system,
+      this.spaceLuaEnv.env,
+    );
+    const sf = new LuaStackFrame(tl, null);
+    try {
+      return luaValueToJS(
+        await luaCall(luaFunction, args.map(jsToLuaValue), {}, sf),
+        sf,
+      );
+    } catch (e: any) {
+      await handleLuaError(e, this.system);
+    }
+  }
+
+  public async hasFullIndexCompleted() {
+    return (await this.ds.get(indexVersionKey)) === desiredIndexVersion;
+  }
+
+  private getCurrentIndexVersion() {
+    return this.ds.get(indexVersionKey);
+  }
+
+  private async markFullSpaceIndexComplete() {
+    await this.ds.set(indexVersionKey, desiredIndexVersion);
   }
 }

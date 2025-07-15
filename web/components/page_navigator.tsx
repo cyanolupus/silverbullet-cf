@@ -4,12 +4,9 @@ import type {
   CompletionContext,
   CompletionResult,
 } from "@codemirror/autocomplete";
-import type {
-  DocumentMeta,
-  PageMeta,
-} from "@silverbulletmd/silverbullet/types";
-import { tagRegex as mdTagRegex } from "$common/markdown_parser/constants.ts";
+import { tagRegex as mdTagRegex } from "../markdown_parser/constants.ts";
 import { extractHashtag } from "@silverbulletmd/silverbullet/lib/tags";
+import type { DocumentMeta, PageMeta } from "../../type/index.ts";
 
 const tagRegex = new RegExp(mdTagRegex.source, "g");
 
@@ -29,7 +26,7 @@ export function PageNavigator({
   allPages: PageMeta[];
   extensions: Set<string>;
   vimMode: boolean;
-  darkMode: boolean;
+  darkMode?: boolean;
   mode: "page" | "meta" | "document" | "all";
   onNavigate: (page: string | undefined, type: "document" | "page") => void;
   onModeSwitch: (mode: "page" | "meta" | "document" | "all") => void;

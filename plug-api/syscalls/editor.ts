@@ -1,7 +1,10 @@
-import type { PageMeta, UploadFile } from "../types.ts";
 import { syscall } from "../syscall.ts";
-import type { FilterOption } from "@silverbulletmd/silverbullet/type/client";
+import type {
+  FilterOption,
+  UploadFile,
+} from "@silverbulletmd/silverbullet/type/client";
 import type { Ref } from "@silverbulletmd/silverbullet/lib/page_ref";
+import type { PageMeta } from "../../type/index.ts";
 
 /**
  * Exposes various editor utilities.
@@ -91,6 +94,16 @@ export function getSelection(): Promise<
  */
 export function setSelection(from: number, to: number): Promise<void> {
   return syscall("editor.setSelection", from, to);
+}
+
+/**
+ * Invoke a client command by name
+ * Note: only available on the client
+ * @param name name of the command
+ * @param args arguments to pass to the command
+ */
+export function invokeCommand(name: string, args?: string[]): Promise<any> {
+  return syscall("editor.invokeCommand", name, args);
 }
 
 /**
@@ -254,6 +267,13 @@ export function hidePanel(
   id: "lhs" | "rhs" | "bhs" | "modal",
 ): Promise<void> {
   return syscall("editor.hidePanel", id);
+}
+
+export function showProgress(
+  progressPercentage?: number,
+  progressType?: string,
+): Promise<void> {
+  return syscall("editor.showProgress", progressPercentage, progressType);
 }
 
 /**
@@ -471,8 +491,8 @@ export function vimEx(exCommand: string): Promise<any> {
 /**
  * Execute a vim config using the CodeMirror Vim Mode API
  */
-export function vimConfig(): Promise<any> {
-  return syscall("editor.vimConfig");
+export function configureVimMode(): Promise<any> {
+  return syscall("editor.configureVimMode");
 }
 
 // Document editor specific syscalls

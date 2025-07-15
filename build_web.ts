@@ -8,7 +8,7 @@ import { parseArgs } from "@std/cli/parse-args";
 import { patchDenoLibJS } from "./cmd/compile.ts";
 import { denoPlugins } from "@luca/esbuild-deno-loader";
 import * as esbuild from "esbuild";
-import { updateVersionFile } from "./update_version.ts";
+import { updateVersionFile } from "./cmd/update_version.ts";
 
 await updateVersionFile();
 
@@ -21,7 +21,6 @@ export async function bundleAll(
   if (watch) {
     const watcher = Deno.watchFs([
       "web",
-      "common",
       "dist_plug_bundle/_plug",
       "Library",
     ]);
@@ -80,6 +79,7 @@ export async function copyAssets(dist: string) {
   bundleJs = patchDenoLibJS(bundleJs);
   await Deno.writeTextFile(`${dist}/client.js`, bundleJs);
 }
+
 async function buildCopyBundleAssets() {
   await Deno.mkdir("dist_client_bundle", { recursive: true });
   await Deno.mkdir("dist_plug_bundle", { recursive: true });
@@ -111,15 +111,16 @@ async function buildCopyBundleAssets() {
     absWorkingDir: Deno.cwd(),
     bundle: true,
     treeShaking: true,
-    sourcemap: "linked",
+    sourcemap: Deno.args[0] === "--production" ? undefined : "linked",
     minify: true,
     jsxFactory: "h",
     // metafile: true,
     jsx: "automatic",
     jsxFragment: "Fragment",
-    jsxImportSource: "https://esm.sh/preact@10.23.1",
+    jsxImportSource: "npm:preact@10.23.1",
     plugins: denoPlugins({
       configPath: fileURLToPath(new URL("./deno.json", import.meta.url)),
+      nodeModulesDir: "auto",
     }),
   });
 

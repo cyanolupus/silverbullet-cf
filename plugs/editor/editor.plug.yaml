@@ -1,78 +1,6 @@
 name: editor
 requiredPermissions:
   - fetch
-config:
-  schema.config.properties:
-    shortcuts:
-      type: array
-      items:
-        type: object
-        properties:
-          command:
-            type: string
-          key:
-            type: string
-            nullable: true
-          mac:
-            type: string
-            nullable: true
-          slashCommand:
-            type: string
-            nullable: true
-          priority:
-            type: number
-            nullable: true
-        required:
-          - command
-      nullable: true
-    useSmartQuotes:
-      type: boolean
-      nullable: true
-    pwaOpenLastPage:
-      type: boolean
-      nullable: true
-    hideEditButton:
-      type: boolean
-      nullable: true
-    hideSyncButton:
-      type: boolean
-      nullable: true
-    mobileMenuStyle:
-      type: string
-      nullable: true
-    actionButtons:
-      type: array
-      items:
-        type: object
-        properties:
-          icon:
-            type: string
-          description:
-            type: string
-            nullable: true
-          command:
-            type: string
-          args:
-            type: array
-            items:
-              type: object
-            nullable: true
-          mobile:
-            type: boolean
-            nullable: true
-        required:
-          - icon
-          - command
-    defaultLinkStyle:
-      type: string
-      nullable: true
-    plugs:
-      type: array
-      items:
-        type: string
-    indentMultiplier:
-      type: number
-      nullable: true
 functions:
   setEditorMode:
     path: "./editor.ts:setEditorMode"
@@ -120,7 +48,7 @@ functions:
   openAllNavigator:
     path: editor.ts:openAllNavigator
     command:
-      name: "Navigate: All Pages Picker"
+      name: "Navigate: Anything Picker"
 
   # Page operations
   deletePage:
@@ -298,13 +226,6 @@ functions:
     command:
       name: "Editor: Toggle Vim Mode"
       requireEditor: page
-  loadVimRc:
-    path: "./vim.ts:loadVimRc"
-    command:
-      name: "Editor: Vim: Load VIMRC"
-      requireEditor: page
-    events:
-      - editor:modeswitch
   loadVimConfig:
     path: "./vim.ts:loadVimConfig"
     command:
@@ -320,29 +241,26 @@ functions:
       name: "Stats: Show"
       requireEditor: page
 
+  # Client commands
   reloadUICommand:
     path: ./system.ts:reloadUICommand
     command:
-      name: "System: Reload UI"
+      name: "Client: Reload UI"
 
   wipeClientCommand:
     path: ./system.ts:wipeClientCommand
     command:
-      name: "System: Wipe Client"
+      name: "Client: Wipe"
 
   wipeAndLogoutCommand:
     path: ./system.ts:wipeAndLogoutCommand
     command:
-      name: "Clear Local Storage & Logout"
+      name: "Client: Logout"
 
   versionCommand:
     path: ./help.ts:versionCommand
     command:
-      name: "Help: Version"
-  gettingStartedCommand:
-    path: ./help.ts:gettingStartedCommand
-    command:
-      name: "Help: Getting Started"
+      name: "Client: Version"
 
   uploadFileCommand:
     path: ./upload.ts:uploadFile

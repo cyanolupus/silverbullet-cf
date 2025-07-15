@@ -31,16 +31,15 @@ class InlineContentWidget extends WidgetType {
     super();
   }
 
+  override get estimatedHeight(): number {
+    return this.client.getCachedWidgetHeight(
+      `content:${this.url}`,
+    );
+  }
+
   override eq(other: InlineContentWidget) {
     return other.url === this.url && other.title === this.title &&
       JSON.stringify(other.dim) === JSON.stringify(this.dim);
-  }
-
-  override get estimatedHeight(): number {
-    const cachedHeight = this.client.getCachedWidgetHeight(
-      `content:${this.url}`,
-    );
-    return cachedHeight;
   }
 
   toDOM() {

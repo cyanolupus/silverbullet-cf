@@ -1,6 +1,7 @@
-import type { KV, KvKey } from "../../plug-api/types.ts";
 import type { KvPrimitives, KvQueryOptions } from "./kv_primitives.ts";
 import { type IDBPDatabase, openDB } from "idb";
+
+import type { KV, KvKey } from "../../type/datastore.ts";
 
 const sep = "\0";
 const objectStoreName = "data";
@@ -19,6 +20,24 @@ export class IndexedDBKvPrimitives implements KvPrimitives {
         db.createObjectStore(objectStoreName);
       },
     });
+  }
+
+  async clear(): Promise<void> {
+    const objectStoreNames = this.db.objectStoreNames;
+
+    // Create a transaction that includes all object stores
+    const tx = this.db.transaction(objectStoreNames, "readwrite");
+
+    // Clear each object store in parallel
+    const clearPromises = Array.from(objectStoreNames).map((storeName) =>
+      tx.objectStore(storeName).clear()
+    );
+
+    // Wait for all clears to complete
+    await Promise.all(clearPromises);
+
+    // Complete the transaction
+    await tx.done;
   }
 
   batchGet(keys: KvKey[]): Promise<any[]> {
@@ -57,6 +76,10 @@ export class IndexedDBKvPrimitives implements KvPrimitives {
     }
   }
 
+  close() {
+    this.db.close();
+  }
+
   private buildKey(key: KvKey): string {
     for (const k of key) {
       if (k.includes(sep)) {
@@ -68,9 +91,5 @@ export class IndexedDBKvPrimitives implements KvPrimitives {
 
   private extractKey(key: string): KvKey {
     return key.split(sep);
-  }
-
-  close() {
-    this.db.close();
   }
 }
