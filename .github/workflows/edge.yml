@@ -6,6 +6,7 @@ on:
       - "main"
 jobs:
   release:
+    if: github.repository == 'silverbulletmd/silverbullet'
     runs-on: ubuntu-latest
     steps:
       - name: Setup repo
