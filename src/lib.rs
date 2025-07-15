@@ -332,12 +332,21 @@ pub async fn main(
     let router = Router::with_data((client_asset_bundle, plug_asset_bundle));
 
     let router = router
-        .get_async("/", |_, ctx| async move {
+        .get_async("/", |req, ctx| async move {
             let (mut client_asset_bundle, _) = ctx.data;
             Response::from_html(
                 client_asset_bundle
                     .read_text_file(&ctx.env, ".client/index.html")
-                    .await?,
+                    .await?
+                    .replace("{{TITLE}}", "SilverBullet")
+                    .replace("{{DESCRIPTION}}", "Unimplemented")
+                    .replace(
+                        "{{HOST_URL_PREFIX}}",
+                        &req.headers()
+                            .get("host")
+                            .unwrap_or_default()
+                            .unwrap_or_default(),
+                    ),
             )
         })
         .get_async("/index.json", |req, ctx| async move {
