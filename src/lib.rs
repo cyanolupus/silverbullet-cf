@@ -340,13 +340,7 @@ pub async fn main(
                     .await?
                     .replace("{{TITLE}}", "SilverBullet")
                     .replace("{{DESCRIPTION}}", "Unimplemented")
-                    .replace(
-                        "{{HOST_URL_PREFIX}}",
-                        &req.headers()
-                            .get("host")
-                            .unwrap_or_default()
-                            .unwrap_or_default(),
-                    ),
+                    .replace("{{HOST_URL_PREFIX}}", ""),
             )
         })
         .get_async("/index.json", |req, ctx| async move {
